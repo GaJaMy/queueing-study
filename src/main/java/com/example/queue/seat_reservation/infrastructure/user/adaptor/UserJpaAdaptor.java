@@ -16,13 +16,13 @@ public class UserJpaAdaptor implements UserAdaptor {
     private final JPAQueryFactory jpaQueryFactory;
 
     @Override
-    public Optional<User> getUser() {
-        return Optional.empty();
+    public Optional<User> getUser(String userId) {
+        return userRepository.findById(userId);
     }
 
     @Override
-    public void saveUser() {
-
+    public void saveUser(User user) {
+        userRepository.save(user);
     }
 
     @Override
