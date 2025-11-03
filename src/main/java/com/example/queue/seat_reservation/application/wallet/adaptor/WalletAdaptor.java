@@ -1,10 +1,9 @@
 package com.example.queue.seat_reservation.application.wallet.adaptor;
 
+import com.example.queue.seat_reservation.domain.wallet.entity.Wallet;
+
+import java.util.Optional;
+
 public interface WalletAdaptor {
-    void getCash();
-    void getPoint();
-    void useCash();
-    void usePoint();
-    void chargeCash();
-    void chargePoint();
+    Optional<Wallet> getWallet(String userId);
 }

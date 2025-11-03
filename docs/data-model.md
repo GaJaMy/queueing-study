@@ -1,76 +1,696 @@
-# 🎯 콘서트 예약 시스템 — 데이터 모델 설계 (Redis 토큰 반영)
+# 데이터 모델 설계
+
+## 목차
+1. [Entity Relationship Diagram](#1-entity-relationship-diagram-erd)
+2. [엔티티 상세 정의](#2-엔티티-상세-정의)
+3. [관계 정의](#3-관계-정의)
+4. [인덱스 전략](#4-인덱스-전략)
+5. [제약 조건](#5-제약-조건)
+6. [Redis 데이터 구조](#6-redis-데이터-구조)
+
+---
 
 ## 1. Entity Relationship Diagram (ERD)
 
-User 1 ─── Seat *
+```
+┌──────────────┐           ┌──────────────┐
+│     User     │           │    Wallet    │
+│──────────────│           │──────────────│
+│ userId (PK)  │───────────│ walletId (PK)│
+│ name         │    1:1    │ userId (FK)  │
+│ email        │           │ cash         │
+│ createdAt    │           │ point        │
+└──────────────┘           │ updatedAt    │
+       │                   └──────────────┘
+       │                          │
+       │ 1:N                      │ 1:N
+       │                          │
+       ▼                          ▼
+┌──────────────┐           ┌──────────────────┐
+│ Reservation  │           │ PaymentHistory   │
+│──────────────│           │──────────────────│
+│ reservationId│◄──┐       │ historyId (PK)   │
+│ userId (FK)  │   │       │ walletId (FK)    │
+│ seatId (FK)  │   │ 1:1   │ type             │
+│ status       │   │       │ amount           │
+│ price        │   │       │ balanceAfter     │
+│ reservedAt   │   │       │ description      │
+│ expiresAt    │   │       │ createdAt        │
+└──────────────┘   │       └──────────────────┘
+       │           │
+       │ N:1       │
+       │           │
+       ▼           │
+┌──────────────┐   │
+│     Seat     │   │
+│──────────────│   │
+│ seatId (PK)  │   │
+│ seatNumber   │   │
+│ price        │   │
+│ status       │   │
+│ createdAt    │   │
+│ updatedAt    │   │
+└──────────────┘   │
+                   │
+                   │
+            ┌──────┴──────┐
+            │   Payment   │
+            │─────────────│
+            │ paymentId   │
+            │ reservationId│
+            │ userId (FK) │
+            │ totalAmount │
+            │ pointUsed   │
+            │ cashUsed    │
+            │ pointEarned │
+            │ paidAt      │
+            └─────────────┘
 
-- User 1 : Seat * — 결제 완료 또는 임시 예약 좌석 관리
-- Token : Redis에서 관리, Seat 임시 예약과 연동
+┌─────────────────────────┐
+│  TokenHistory (RDB)     │
+│─────────────────────────│
+│ token (PK)              │
+│ userId (FK)             │
+│ status                  │
+│ createdAt               │
+│ activatedAt             │
+│ expiredAt               │
+└─────────────────────────┘
 
-## 2. 엔티티 정의
+┌─────────────────────────┐
+│  QueueToken (Redis)     │
+│─────────────────────────│
+│ token (Key)             │
+│ userId                  │
+│ status (WAITING/ACTIVE) │
+│ queuePosition           │
+│ createdAt               │
+│ TTL (ACTIVE: 30분)     │
+└─────────────────────────┘
+```
 
-### 2.1 User
-설명: 콘서트 예약 시스템 사용자 정보
+---
 
-속성:
-- user_id : BIGINT, PK, AUTO_INCREMENT, 사용자 고유 ID
-- name : VARCHAR(100), NOT NULL, 사용자 이름
-- email : VARCHAR(255), UNIQUE, NOT NULL, 이메일
-- created_at : TIMESTAMP, DEFAULT CURRENT_TIMESTAMP, 가입일
+## 2. 엔티티 상세 정의
 
-인덱스:
-- PRIMARY KEY: user_id
-- UNIQUE INDEX: email
+### 2.1 User (사용자)
 
-### 2.2 Seat
-설명: 콘서트 좌석 상태
+**설명:** 콘서트 예약 시스템 사용자 정보
 
-속성:
-- seat_id : VARCHAR(10), PK, 좌석 번호 (예: A1, B2)
-- status : ENUM('AVAILABLE','TEMP_RESERVED','RESERVED'), NOT NULL, DEFAULT 'AVAILABLE', 좌석 상태
-- reserved_by : BIGINT, FK → User(user_id), NULLABLE, 결제 완료 사용자
-- temp_reserved_by : BIGINT, FK → User(user_id), NULLABLE, 임시 예약 사용자
-- created_at : TIMESTAMP, DEFAULT CURRENT_TIMESTAMP, 생성일
-- updated_at : TIMESTAMP, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, 최종 수정일
+**테이블명:** `users`
 
-인덱스:
-- PRIMARY KEY: seat_id
-- INDEX: status
-- INDEX: reserved_by
-- INDEX: temp_reserved_by
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| user_id | VARCHAR(100) | PK, NOT NULL | - | 사용자 고유 ID |
+| name | VARCHAR(100) | NOT NULL | - | 사용자 이름 |
+| email | VARCHAR(256) | NOT NULL, UNIQUE | - | 이메일 주소 |
+| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 계정 생성 시간 |
 
-제약조건:
-- status = TEMP_RESERVED → temp_reserved_by NOT NULL, reserved_by NULL
-- status = RESERVED → reserved_by NOT NULL, temp_reserved_by NULL
-- AVAILABLE 상태일 때 reserved_by, temp_reserved_by NULL
-- token_id는 임시 예약 좌석과 Redis 토큰 연동 용도
+**인덱스:**
+- PRIMARY KEY: `user_id`
+- UNIQUE INDEX: `idx_user_email` ON `email`
 
-### 2.3 TokenHistory
-설명: 과거 발급된 토큰 기록 보관 (Redis 토큰과 연관은 없음)
+**제약조건:**
+- `user_id`는 최대 100자
+- `email`은 중복 불가
+- 계정 생성 시 자동으로 `Wallet` 생성 (애플리케이션 레벨)
 
-속성:
-- token_id : VARCHAR(64), PK, 발급된 토큰 값
-- issued_at : TIMESTAMP, NOT NULL, 발급 시간
-- expired_at : TIMESTAMP, NOT NULL, 만료 시간
+---
 
-인덱스:
-- PRIMARY KEY: token_id
-- INDEX: user_id
-- INDEX: issued_at
-- INDEX: expired_at
+### 2.2 Wallet (지갑)
 
-제약조건:
-- token_id 고유
-- expired_at 이후 재발급된 토큰과 충돌 확인 가능
-- Seat나 User와 직접적인 FK 관계 없음
+**설명:** 사용자의 현금 및 포인트 잔액 정보
 
-## 3. 관계 요약
+**테이블명:** `wallets`
 
-- User ↔ Seat : 결제 완료(reserved_by), 임시 예약(temp_reserved_by) 관계
-- Token : Redis에서 TTL 기반 관리, Seat.temp_reserved_by와 token_id로 연결
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| wallet_id | BIGINT | PK, AUTO_INCREMENT | - | 지갑 고유 ID |
+| user_id | VARCHAR(100) | FK, NOT NULL, UNIQUE | - | 사용자 ID (users.user_id) |
+| cash | INT | NOT NULL | 0 | 현금 잔액 |
+| point | INT | NOT NULL | 0 | 포인트 잔액 |
+| updated_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP ON UPDATE | 마지막 업데이트 시간 |
 
-## 4. 추가 고려사항
+**인덱스:**
+- PRIMARY KEY: `wallet_id`
+- UNIQUE INDEX: `idx_wallet_user` ON `user_id`
 
-- Redis에서 Token TTL 관리 → 임시 예약 만료 시 Seat.status 자동 AVAILABLE로 변경
-- 대기열 순서(queue_position)와 입장 시간(entered_at) 역시 Redis에서 관리
-- Seat 임시 예약 충돌 방지를 위해 status + temp_reserved_by + token_id 조합 고유 인덱스 가능
+**제약조건:**
+- `user_id`는 `users.user_id` 외래 키 (CASCADE DELETE)
+- `cash`, `point`는 음수 불가 (CHECK >= 0)
+- 한 사용자당 하나의 지갑만 존재
+
+---
+
+### 2.3 Seat (좌석)
+
+**설명:** 콘서트 좌석 정보 및 상태
+
+**테이블명:** `seats`
+
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| seat_id | VARCHAR(10) | PK, NOT NULL | - | 좌석 고유 ID (예: A-001) |
+| seat_number | VARCHAR(20) | NOT NULL | - | 좌석 번호 (화면 표시용, 예: A-1) |
+| price | INT | NOT NULL | - | 좌석 가격 |
+| status | VARCHAR(20) | NOT NULL | 'AVAILABLE' | 좌석 상태 |
+| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 생성 시간 |
+| updated_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP ON UPDATE | 업데이트 시간 |
+
+**Enum 값:**
+- status: `AVAILABLE`, `TEMP_RESERVED`, `CONFIRMED`
+
+**인덱스:**
+- PRIMARY KEY: `seat_id`
+- INDEX: `idx_seat_status` ON `status`
+- INDEX: `idx_seat_updated_at` ON `updated_at`
+
+**제약조건:**
+- `seat_id`는 최대 10자
+- `price`는 양수 (CHECK > 0)
+- `status`는 정의된 값만 허용
+
+---
+
+### 2.4 Reservation (예약)
+
+**설명:** 좌석 예약 정보 (임시 예약 및 확정 예약)
+
+**테이블명:** `reservations`
+
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| reservation_id | VARCHAR(50) | PK, NOT NULL | - | 예약 고유 ID |
+| user_id | VARCHAR(100) | FK, NOT NULL | - | 사용자 ID (users.user_id) |
+| seat_id | VARCHAR(10) | FK, NOT NULL | - | 좌석 ID (seats.seat_id) |
+| status | VARCHAR(20) | NOT NULL | 'TEMP_RESERVED' | 예약 상태 |
+| price | INT | NOT NULL | - | 예약 시점 좌석 가격 |
+| reserved_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 예약 시간 |
+| expires_at | TIMESTAMP | NULL | - | 임시 예약 만료 시간 (5분 후) |
+| confirmed_at | TIMESTAMP | NULL | - | 예약 확정 시간 (결제 완료 시) |
+
+**Enum 값:**
+- status: `TEMP_RESERVED`, `CONFIRMED`, `EXPIRED`, `CANCELLED`
+
+**인덱스:**
+- PRIMARY KEY: `reservation_id`
+- INDEX: `idx_reservation_user` ON `user_id`
+- INDEX: `idx_reservation_seat` ON `seat_id`
+- INDEX: `idx_reservation_status` ON `status`
+- INDEX: `idx_reservation_expires` ON `expires_at`
+- UNIQUE INDEX: `idx_active_reservation` ON `seat_id, status` WHERE `status = 'TEMP_RESERVED' OR status = 'CONFIRMED'`
+
+**제약조건:**
+- `user_id`는 `users.user_id` 외래 키
+- `seat_id`는 `seats.seat_id` 외래 키
+- `status = TEMP_RESERVED`일 때 `expires_at` NOT NULL
+- `status = CONFIRMED`일 때 `confirmed_at` NOT NULL
+- 동일 좌석에 대해 TEMP_RESERVED 또는 CONFIRMED 상태 예약은 하나만 존재
+
+---
+
+### 2.5 Payment (결제)
+
+**설명:** 결제 정보
+
+**테이블명:** `payments`
+
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| payment_id | VARCHAR(50) | PK, NOT NULL | - | 결제 고유 ID |
+| reservation_id | VARCHAR(50) | FK, NOT NULL, UNIQUE | - | 예약 ID (reservations.reservation_id) |
+| user_id | VARCHAR(100) | FK, NOT NULL | - | 사용자 ID (users.user_id) |
+| total_amount | INT | NOT NULL | - | 총 결제 금액 |
+| point_used | INT | NOT NULL | 0 | 사용한 포인트 |
+| cash_used | INT | NOT NULL | - | 사용한 현금 |
+| point_earned | INT | NOT NULL | 0 | 적립된 포인트 |
+| paid_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 결제 완료 시간 |
+
+**인덱스:**
+- PRIMARY KEY: `payment_id`
+- UNIQUE INDEX: `idx_payment_reservation` ON `reservation_id`
+- INDEX: `idx_payment_user` ON `user_id`
+- INDEX: `idx_payment_paid_at` ON `paid_at`
+
+**제약조건:**
+- `reservation_id`는 `reservations.reservation_id` 외래 키
+- `user_id`는 `users.user_id` 외래 키
+- `total_amount = point_used + cash_used`
+- `point_earned = cash_used * 0.05` (5% 적립)
+- 하나의 예약에 하나의 결제만 존재
+
+---
+
+### 2.6 PaymentHistory (결제 내역)
+
+**설명:** 사용자의 모든 금액 변동 내역 (충전, 결제, 적립 등)
+
+**테이블명:** `payment_histories`
+
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| history_id | BIGINT | PK, AUTO_INCREMENT | - | 내역 고유 ID |
+| wallet_id | BIGINT | FK, NOT NULL | - | 지갑 ID (wallets.wallet_id) |
+| type | VARCHAR(20) | NOT NULL | - | 거래 유형 |
+| amount | INT | NOT NULL | - | 변동 금액 (양수/음수) |
+| balance_after | INT | NOT NULL | - | 거래 후 잔액 |
+| description | VARCHAR(255) | NULL | - | 거래 설명 |
+| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 거래 시간 |
+
+**Enum 값:**
+- type: `CHARGE` (충전), `PAYMENT_CASH` (현금 결제), `PAYMENT_POINT` (포인트 결제), `POINT_EARN` (포인트 적립)
+
+**인덱스:**
+- PRIMARY KEY: `history_id`
+- INDEX: `idx_history_wallet` ON `wallet_id`
+- INDEX: `idx_history_created` ON `created_at`
+- INDEX: `idx_history_type` ON `type`
+
+**제약조건:**
+- `wallet_id`는 `wallets.wallet_id` 외래 키
+- `amount`는 0이 아님
+- 거래 내역은 삭제 불가 (Soft Delete 또는 불변)
+
+---
+
+### 2.7 TokenHistory (토큰 히스토리)
+
+**설명:** 발급된 대기열 토큰의 이력 (감사 목적)
+
+**테이블명:** `token_histories`
+
+| 컬럼명 | 타입 | 제약조건 | 기본값 | 설명 |
+|--------|------|---------|--------|------|
+| token | VARCHAR(100) | PK, NOT NULL | - | 토큰 값 (UUID) |
+| user_id | VARCHAR(100) | FK, NOT NULL | - | 사용자 ID (users.user_id) |
+| status | VARCHAR(20) | NOT NULL | 'WAITING' | 토큰 상태 |
+| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 토큰 발급 시간 |
+| activated_at | TIMESTAMP | NULL | - | ACTIVE 상태 전환 시간 |
+| expired_at | TIMESTAMP | NULL | - | 토큰 만료 시간 |
+
+**Enum 값:**
+- status: `WAITING`, `ACTIVE`, `EXPIRED`
+
+**인덱스:**
+- PRIMARY KEY: `token`
+- INDEX: `idx_token_user` ON `user_id`
+- INDEX: `idx_token_status` ON `status`
+- INDEX: `idx_token_created` ON `created_at`
+- INDEX: `idx_token_expired` ON `expired_at`
+
+**제약조건:**
+- `user_id`는 `users.user_id` 외래 키
+- `status = ACTIVE`일 때 `activated_at` NOT NULL
+- `status = EXPIRED`일 때 `expired_at` NOT NULL
+
+---
+
+## 3. 관계 정의
+
+### 3.1 User ↔ Wallet (1:1)
+- **관계:** 한 사용자는 하나의 지갑만 소유
+- **외래 키:** `wallets.user_id` → `users.user_id`
+- **Cascade:** DELETE CASCADE (사용자 삭제 시 지갑도 삭제)
+
+### 3.2 User ↔ Reservation (1:N)
+- **관계:** 한 사용자는 여러 예약을 가질 수 있음
+- **외래 키:** `reservations.user_id` → `users.user_id`
+- **Cascade:** DELETE RESTRICT (예약이 있는 사용자는 삭제 불가)
+
+### 3.3 Seat ↔ Reservation (1:N)
+- **관계:** 한 좌석은 여러 예약 기록을 가질 수 있음 (시간에 따라)
+- **외래 키:** `reservations.seat_id` → `seats.seat_id`
+- **Cascade:** DELETE RESTRICT (예약이 있는 좌석은 삭제 불가)
+- **비즈니스 규칙:** 동일 시점에는 하나의 활성 예약만 존재
+
+### 3.4 Reservation ↔ Payment (1:1)
+- **관계:** 한 예약은 하나의 결제만 가짐
+- **외래 키:** `payments.reservation_id` → `reservations.reservation_id`
+- **Cascade:** DELETE RESTRICT (결제가 있는 예약은 삭제 불가)
+
+### 3.5 Wallet ↔ PaymentHistory (1:N)
+- **관계:** 한 지갑은 여러 거래 내역을 가짐
+- **외래 키:** `payment_histories.wallet_id` → `wallets.wallet_id`
+- **Cascade:** DELETE CASCADE (지갑 삭제 시 내역도 삭제)
+
+### 3.6 User ↔ TokenHistory (1:N)
+- **관계:** 한 사용자는 여러 토큰을 발급받을 수 있음 (시간에 따라)
+- **외래 키:** `token_histories.user_id` → `users.user_id`
+- **Cascade:** DELETE CASCADE (사용자 삭제 시 토큰 히스토리도 삭제)
+
+---
+
+## 4. 인덱스 전략
+
+### 4.1 조회 성능 최적화
+
+| 테이블 | 인덱스명 | 컬럼 | 용도 |
+|--------|---------|------|------|
+| users | idx_user_email | email | 이메일 중복 체크, 사용자 조회 |
+| wallets | idx_wallet_user | user_id | 사용자별 지갑 조회 |
+| seats | idx_seat_status | status | 예약 가능 좌석 필터링 |
+| seats | idx_seat_updated_at | updated_at | 최근 업데이트된 좌석 조회 |
+| reservations | idx_reservation_user | user_id | 사용자별 예약 조회 |
+| reservations | idx_reservation_seat | seat_id | 좌석별 예약 이력 조회 |
+| reservations | idx_reservation_status | status | 상태별 예약 필터링 |
+| reservations | idx_reservation_expires | expires_at | 만료된 임시 예약 스케줄러 처리 |
+| payments | idx_payment_user | user_id | 사용자별 결제 내역 조회 |
+| payments | idx_payment_paid_at | paid_at | 시간별 결제 통계 |
+| payment_histories | idx_history_wallet | wallet_id | 지갑별 거래 내역 조회 |
+| payment_histories | idx_history_created | created_at | 시간별 거래 조회 |
+| token_histories | idx_token_user | user_id | 사용자별 토큰 이력 조회 |
+| token_histories | idx_token_expired | expired_at | 만료된 토큰 정리 |
+
+### 4.2 복합 인덱스
+
+| 테이블 | 인덱스명 | 컬럼 | 용도 |
+|--------|---------|------|------|
+| reservations | idx_active_reservation | seat_id, status | 좌석별 활성 예약 유일성 보장 |
+| reservations | idx_user_status | user_id, status | 사용자별 상태별 예약 조회 |
+| payment_histories | idx_wallet_type | wallet_id, type | 지갑별 거래 유형 필터링 |
+
+---
+
+## 5. 제약 조건
+
+### 5.1 데이터 무결성
+
+#### User
+```sql
+CHECK (LENGTH(user_id) > 0 AND LENGTH(user_id) <= 100)
+CHECK (email LIKE '%@%')
+```
+
+#### Wallet
+```sql
+CHECK (cash >= 0)
+CHECK (point >= 0)
+```
+
+#### Seat
+```sql
+CHECK (price > 0)
+CHECK (status IN ('AVAILABLE', 'TEMP_RESERVED', 'CONFIRMED'))
+```
+
+#### Reservation
+```sql
+CHECK (price > 0)
+CHECK (status IN ('TEMP_RESERVED', 'CONFIRMED', 'EXPIRED', 'CANCELLED'))
+-- 임시 예약은 만료 시간 필수
+CHECK (status != 'TEMP_RESERVED' OR expires_at IS NOT NULL)
+-- 확정 예약은 확정 시간 필수
+CHECK (status != 'CONFIRMED' OR confirmed_at IS NOT NULL)
+```
+
+#### Payment
+```sql
+CHECK (total_amount > 0)
+CHECK (point_used >= 0)
+CHECK (cash_used >= 0)
+CHECK (point_earned >= 0)
+CHECK (total_amount = point_used + cash_used)
+```
+
+### 5.2 비즈니스 로직 제약
+
+#### 좌석 예약 동시성 제어
+```sql
+-- 동일 좌석에 활성 예약은 하나만 존재
+CREATE UNIQUE INDEX idx_active_reservation
+ON reservations(seat_id)
+WHERE status IN ('TEMP_RESERVED', 'CONFIRMED');
+```
+
+#### 사용자당 활성 임시 예약 제한
+```sql
+-- 애플리케이션 레벨에서 제어
+-- 한 사용자는 하나의 TEMP_RESERVED 예약만 가능
+```
+
+#### 토큰 유일성
+```sql
+-- 사용자당 활성 토큰은 하나만 존재 (Redis 레벨에서 제어)
+-- RDB에는 히스토리만 저장
+```
+
+---
+
+## 6. Redis 데이터 구조
+
+### 6.1 대기열 토큰 (QueueToken)
+
+**Key Pattern:** `queue:token:{token}`
+
+**Data Structure:** Hash
+
+**필드:**
+```
+userId: string
+status: "WAITING" | "ACTIVE"
+queuePosition: integer (WAITING일 때만)
+createdAt: timestamp
+activatedAt: timestamp (ACTIVE일 때만)
+```
+
+**TTL:**
+- WAITING: 무제한 (TTL 설정 안 함)
+- ACTIVE: 1800초 (30분)
+
+**Example:**
+```
+queue:token:550e8400-e29b-41d4-a716-446655440000
+{
+  userId: "user123",
+  status: "ACTIVE",
+  createdAt: "2025-11-03T13:00:00Z",
+  activatedAt: "2025-11-03T13:00:00Z"
+}
+TTL: 1800
+```
+
+---
+
+### 6.2 대기열 (Waiting Queue)
+
+**Key Pattern:** `queue:waiting`
+
+**Data Structure:** Sorted Set (ZSET)
+
+**Score:** 생성 시간 (timestamp)
+
+**Value:** token
+
+**목적:** FIFO 순서 보장, 순번 조회
+
+**Example:**
+```
+queue:waiting
+[
+  (1730620800, "550e8400-e29b-41d4-a716-446655440001"),
+  (1730620801, "550e8400-e29b-41d4-a716-446655440002"),
+  (1730620802, "550e8400-e29b-41d4-a716-446655440003")
+]
+```
+
+---
+
+### 6.3 활성 사용자 카운터
+
+**Key Pattern:** `queue:active:count`
+
+**Data Structure:** String (integer)
+
+**용도:** 현재 입장된 (ACTIVE) 사용자 수 추적
+
+**Example:**
+```
+queue:active:count = "487"
+```
+
+---
+
+### 6.4 사용자별 토큰 매핑
+
+**Key Pattern:** `queue:user:{userId}`
+
+**Data Structure:** String
+
+**Value:** token
+
+**TTL:** 토큰과 동일
+
+**용도:** 사용자당 하나의 토큰만 발급되도록 보장
+
+**Example:**
+```
+queue:user:user123 = "550e8400-e29b-41d4-a716-446655440000"
+TTL: 1800
+```
+
+---
+
+## 7. 데이터 흐름 예시
+
+### 7.1 사용자 등록 및 충전
+```
+1. INSERT INTO users (user_id, name, email)
+2. INSERT INTO wallets (user_id, cash=0, point=0)
+3. UPDATE wallets SET cash = cash + 100000 WHERE user_id = 'user123'
+4. INSERT INTO payment_histories (wallet_id, type='CHARGE', amount=100000, ...)
+```
+
+### 7.2 대기열 토큰 발급
+```
+1. Redis: SET queue:user:user123 = token (중복 체크)
+2. Redis: ZADD queue:waiting timestamp token (WAITING 상태)
+3. RDB: INSERT INTO token_histories (token, user_id, status='WAITING', ...)
+```
+
+### 7.3 대기열 입장 (WAITING → ACTIVE)
+```
+1. Redis: ZRANGE queue:waiting 0 9 (상위 10명 조회)
+2. Redis: ZREM queue:waiting tokens (대기열에서 제거)
+3. Redis: HSET queue:token:{token} status ACTIVE, activatedAt timestamp
+4. Redis: EXPIRE queue:token:{token} 1800 (30분 TTL 설정)
+5. Redis: INCR queue:active:count (활성 사용자 수 증가)
+6. RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW() WHERE token=?
+```
+
+### 7.4 좌석 임시 예약
+```
+1. BEGIN TRANSACTION
+2. SELECT * FROM seats WHERE seat_id=? FOR UPDATE (비관적 락)
+3. CHECK seat.status = 'AVAILABLE'
+4. INSERT INTO reservations (reservation_id, user_id, seat_id, status='TEMP_RESERVED', expires_at=NOW()+5min)
+5. UPDATE seats SET status='TEMP_RESERVED', updated_at=NOW() WHERE seat_id=?
+6. COMMIT
+```
+
+### 7.5 결제 및 예약 확정
+```
+1. BEGIN TRANSACTION
+2. SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE
+3. CHECK reservation.status = 'TEMP_RESERVED' AND reservation.expires_at > NOW()
+4. SELECT * FROM wallets WHERE user_id=? FOR UPDATE
+5. VALIDATE wallet.cash + wallet.point >= reservation.price
+6. CALCULATE point_used, cash_used, point_earned
+7. UPDATE wallets SET cash=cash-cash_used, point=point-point_used+point_earned WHERE user_id=?
+8. INSERT INTO payments (payment_id, reservation_id, total_amount, point_used, cash_used, point_earned, ...)
+9. INSERT INTO payment_histories (wallet_id, type='PAYMENT_CASH', amount=-cash_used, ...)
+10. INSERT INTO payment_histories (wallet_id, type='PAYMENT_POINT', amount=-point_used, ...)
+11. INSERT INTO payment_histories (wallet_id, type='POINT_EARN', amount=point_earned, ...)
+12. UPDATE reservations SET status='CONFIRMED', confirmed_at=NOW() WHERE reservation_id=?
+13. UPDATE seats SET status='CONFIRMED', updated_at=NOW() WHERE seat_id=?
+14. Redis: DEL queue:token:{token} (토큰 만료)
+15. Redis: DEL queue:user:{userId} (사용자 토큰 매핑 제거)
+16. Redis: DECR queue:active:count (활성 사용자 수 감소)
+17. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW() WHERE token=?
+18. COMMIT
+```
+
+---
+
+## 8. 스케줄러 작업
+
+### 8.1 임시 예약 만료 처리
+```sql
+-- 5분 경과된 TEMP_RESERVED 예약 조회
+SELECT reservation_id, seat_id
+FROM reservations
+WHERE status = 'TEMP_RESERVED'
+  AND expires_at < NOW();
+
+-- 예약 상태 변경
+UPDATE reservations
+SET status = 'EXPIRED'
+WHERE reservation_id IN (...);
+
+-- 좌석 상태 복원
+UPDATE seats
+SET status = 'AVAILABLE', updated_at = NOW()
+WHERE seat_id IN (...);
+```
+
+### 8.2 대기열 입장 처리 (10초마다)
+```
+1. Redis: GET queue:active:count
+2. IF active_count <= 500:
+3.   Redis: ZRANGE queue:waiting 0 9 (상위 10명)
+4.   FOR EACH token:
+5.     Redis: ZREM queue:waiting token
+6.     Redis: HSET queue:token:{token} status ACTIVE, activatedAt NOW()
+7.     Redis: EXPIRE queue:token:{token} 1800
+8.     Redis: INCR queue:active:count
+9.     RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW()
+```
+
+### 8.3 만료된 ACTIVE 토큰 정리 (Redis TTL 기반)
+```
+-- Redis TTL이 만료되면 자동 삭제됨
+-- 만료 시 Redis 이벤트 리스너를 통해:
+1. Redis: DECR queue:active:count
+2. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW()
+3. 해당 사용자의 TEMP_RESERVED 예약이 있다면 만료 처리
+```
+
+---
+
+## 9. 성능 최적화 고려사항
+
+### 9.1 인덱스 최적화
+- 자주 조회되는 컬럼에 인덱스 생성
+- 복합 인덱스를 활용한 커버링 인덱스 전략
+- 불필요한 인덱스 제거 (INSERT 성능 영향)
+
+### 9.2 파티셔닝
+- `payment_histories`: 날짜 기반 파티셔닝 (월별)
+- `token_histories`: 날짜 기반 파티셔닝 (월별)
+
+### 9.3 캐싱 전략
+- Redis: 대기열 정보, 활성 토큰 (휘발성)
+- 좌석 상태는 RDB 우선 (데이터 정합성)
+
+### 9.4 동시성 제어
+- 좌석 예약: 비관적 락 (SELECT FOR UPDATE)
+- 잔액 차감: 비관적 락 (트랜잭션 격리 레벨 READ COMMITTED 이상)
+
+---
+
+## 10. 데이터 보존 정책
+
+| 데이터 | 보존 기간 | 정책 |
+|--------|----------|------|
+| users | 영구 | 회원 탈퇴 시 익명화 처리 |
+| wallets | 영구 | 사용자와 함께 삭제 |
+| seats | 영구 | - |
+| reservations | 1년 | 1년 경과 후 아카이빙 |
+| payments | 5년 | 법적 요구사항에 따라 보관 |
+| payment_histories | 5년 | 법적 요구사항에 따라 보관 |
+| token_histories | 3개월 | 감사 목적, 3개월 후 삭제 |
+| Redis (queue) | 실시간 | TTL 기반 자동 만료 |
+
+---
+
+## 11. 마이그레이션 전략
+
+### 11.1 초기 데이터
+```sql
+-- 좌석 초기 데이터 (50개 좌석 예시)
+INSERT INTO seats (seat_id, seat_number, price, status) VALUES
+('A-001', 'A-1', 50000, 'AVAILABLE'),
+('A-002', 'A-2', 50000, 'AVAILABLE'),
+...
+('A-050', 'A-50', 50000, 'AVAILABLE');
+```
+
+### 11.2 DDL 실행 순서
+1. users
+2. wallets (users FK)
+3. seats
+4. reservations (users, seats FK)
+5. payments (reservations, users FK)
+6. payment_histories (wallets FK)
+7. token_histories (users FK)
+8. 인덱스 생성
+9. 제약 조건 추가

@@ -1,6 +1,6 @@
 package com.example.queue.seat_reservation.domain.user.entity;
 
-import com.example.queue.seat_reservation.domain.payment.entity.Wallet;
+import com.example.queue.seat_reservation.domain.wallet.entity.Wallet;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +17,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "users")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_user_email", columnList = "email", unique = true)
+})
 public class User {
     @Id
     private String userId;
@@ -28,7 +30,7 @@ public class User {
     @Column(name = "name", length = 100)
     private String name;
 
-    @Column(name = "email", length = 256)
+    @Column(name = "email", length = 256, unique = true, nullable = false)
     private String email;
 
     @CreatedDate

@@ -1,7 +1,10 @@
 package com.example.queue.seat_reservation.infrastructure.wallet.repository;
 
-import com.example.queue.seat_reservation.domain.payment.entity.Wallet;
+import com.example.queue.seat_reservation.domain.wallet.entity.Wallet;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
+
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
+    Optional<Wallet> findByUser_UserId(String userId);
 }
