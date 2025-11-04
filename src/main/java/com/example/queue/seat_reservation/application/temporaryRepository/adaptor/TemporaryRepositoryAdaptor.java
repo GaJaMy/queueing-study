@@ -1,21 +1,24 @@
 package com.example.queue.seat_reservation.application.temporaryRepository.adaptor;
 
+import java.util.concurrent.TimeUnit;
+
 public interface TemporaryRepositoryAdaptor {
-    // 대기 순번 가져오기
-    void getQueueNumber();
+    void save(String key, String value);
 
-    // 대기열 저장
-    void insertQueue();
+    void save(String key, String value, long ttl, TimeUnit timeUnit);
 
-    // 대기열 삭제
-    void deleteQueue();
+    void save(String key, Object value);
 
-    // 토큰 저장
-    void saveToken();
+    void saveSortedSet(String key, String value);
 
-    // 토큰 삭제
-    void deleteToken();
+    void delete(String key);
 
-    // 토큰 업데이트
-    void updateToken();
+    void update(String key, String value);
+
+    void update(String key, String value, long ttl, TimeUnit timeUnit);
+
+    void getSortedSet(String key);
+
+    int getTotalSetSize();
+    int getPositionInSortedSet(String key);
 }

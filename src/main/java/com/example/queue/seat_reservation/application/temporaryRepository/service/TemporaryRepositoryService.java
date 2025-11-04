@@ -9,5 +9,11 @@ import org.springframework.stereotype.Service;
 public class TemporaryRepositoryService {
     private final TemporaryRepositoryAdaptor temporaryRepositoryAdaptor;
 
+    public void saveQueueToken(String token, String userId) {
+        temporaryRepositoryAdaptor.saveSortedSet(token, userId);
+    }
 
+    public void getTokenInfo(String token) {
+
+    }
 }

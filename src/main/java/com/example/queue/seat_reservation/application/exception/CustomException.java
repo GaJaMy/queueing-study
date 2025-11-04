@@ -1,4 +1,4 @@
-package com.example.queue.seat_reservation.infrastructure.exception;
+package com.example.queue.seat_reservation.application.exception;
 
 import lombok.Getter;
 

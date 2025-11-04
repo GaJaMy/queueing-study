@@ -3,8 +3,8 @@ package com.example.queue.seat_reservation.application.wallet.service;
 import com.example.queue.seat_reservation.application.wallet.adaptor.WalletAdaptor;
 import com.example.queue.seat_reservation.domain.wallet.entity.Wallet;
 import com.example.queue.seat_reservation.domain.user.entity.User;
-import com.example.queue.seat_reservation.infrastructure.exception.CustomException;
-import com.example.queue.seat_reservation.infrastructure.exception.ErrorCode;
+import com.example.queue.seat_reservation.application.exception.CustomException;
+import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

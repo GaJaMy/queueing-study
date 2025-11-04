@@ -2,8 +2,8 @@ package com.example.queue.seat_reservation.application.user.service;
 
 import com.example.queue.seat_reservation.application.user.adaptor.UserAdaptor;
 import com.example.queue.seat_reservation.domain.user.entity.User;
-import com.example.queue.seat_reservation.infrastructure.exception.CustomException;
-import com.example.queue.seat_reservation.infrastructure.exception.ErrorCode;
+import com.example.queue.seat_reservation.application.exception.CustomException;
+import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

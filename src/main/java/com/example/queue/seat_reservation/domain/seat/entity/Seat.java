@@ -1,6 +1,5 @@
 package com.example.queue.seat_reservation.domain.seat.entity;
 
-import com.example.queue.seat_reservation.domain.user.entity.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
