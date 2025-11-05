@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {    // 시스템 에러
     // 404 NotFound
     NOT_EXIST_USER(HttpStatus.NOT_FOUND, "US000","존재하지 않는 유저 입니다."),
+    NOT_EXIST_TOKEN(HttpStatus.NOT_FOUND, "AU000", "존재하지 않는 토큰 입니다."),
+    NOT_EXIST_TOKEN_INFO(HttpStatus.NOT_FOUND, "AU000", "토큰 정보가 존재하지 않습니다."),
 
     SUCCESS(HttpStatus.OK,"SU000","ok"),
     SERVER_ERROR(HttpStatus.OK,"SY001","서버 에러"),

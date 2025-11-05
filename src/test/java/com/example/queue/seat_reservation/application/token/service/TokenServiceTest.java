@@ -1,6 +1,6 @@
 package com.example.queue.seat_reservation.application.token.service;
 
-import com.example.queue.seat_reservation.application.temporaryRepository.service.TemporaryRepositoryService;
+import com.example.queue.seat_reservation.application.queue.service.QueueService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -9,12 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class TokenServiceTest {
     @Mock
-    private TemporaryRepositoryService temporaryRepositoryService;
+    private QueueService queueService;
 
     @InjectMocks
     private TokenService tokenService;

@@ -17,7 +17,7 @@
 
 **Endpoint:** `POST /v1/queue/token`
 
-**Description:** 대기열에 참여하여 고유한 토큰을 발급받습니다.
+**Description:** 대기열에 참여하여 고유한 토큰을 발급받습니다. 동일 사용자가 재발급 요청 시 기존 토큰은 무효화되고 새 토큰이 발급됩니다.
 
 **Request Headers:**
 ```
@@ -39,13 +39,11 @@ Content-Type: application/json
 ```json
 {
   "errorCode": "SU000",
-  "msg": "토큰 발급 성공",
+  "msg": "토큰이 발급되었습니다.",
   "data": {
     "token": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "ACTIVE",
-    "queuePosition": 0,
-    "estimatedWaitTime": 0,
-    "expiresAt": "2025-11-03T13:30:00Z"
+    "status": "WAITING",
+    "expiresAt": null
   }
 }
 ```
@@ -53,36 +51,10 @@ Content-Type: application/json
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | token | string | UUID 기반 고유 토큰 |
-| status | string | 토큰 상태 (WAITING, ACTIVE) |
-| queuePosition | integer | 현재 대기 순번 (0이면 즉시 입장) |
-| estimatedWaitTime | integer | 예상 대기 시간(초) |
-| expiresAt | string (ISO 8601) | 만료 시간 (ACTIVE 상태일 경우만, WAITING은 null) |
-
-**Response (200 OK) - 대기 상태:**
-```json
-{
-  "errorCode": "SU000",
-  "msg": "대기열에 등록되었습니다",
-  "data": {
-    "token": "550e8400-e29b-41d4-a716-446655440001",
-    "status": "WAITING",
-    "queuePosition": 23,
-    "estimatedWaitTime": 240,
-    "expiresAt": null
-  }
-}
-```
+| status | string | 토큰 상태 (WAITING 또는 ACTIVE) |
+| expiresAt | string (ISO 8601) | 만료 시간 (ACTIVE인 경우만, WAITING은 null) |
 
 **Error Responses:**
-- `409 Conflict` - 이미 토큰이 발급된 사용자
-```json
-{
-  "errorCode": "TK001",
-  "msg": "이미 발급된 토큰이 존재합니다.",
-  "data": null
-}
-```
-
 - `404 Not Found` - 존재하지 않는 사용자
 ```json
 {
@@ -91,6 +63,10 @@ Content-Type: application/json
   "data": null
 }
 ```
+
+**참고:**
+- 대기 순서 및 예상 대기 시간은 `GET /v1/queue/status` API로 조회하세요
+- 동일 사용자가 재발급 요청 시 기존 토큰은 자동 무효화됩니다
 
 ---
 

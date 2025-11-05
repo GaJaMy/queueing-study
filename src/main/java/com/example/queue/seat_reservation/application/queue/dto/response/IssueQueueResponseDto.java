@@ -14,7 +14,4 @@ import java.time.LocalDateTime;
 public class IssueQueueResponseDto {
     private String token;
     private String status;
-    private int queuePosition;
-    private int estimatedWaitTime;
-    private LocalDateTime expiresAt;
 }

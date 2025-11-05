@@ -1,8 +1,10 @@
 package com.example.queue.seat_reservation.interfaces.queue.swagger;
 
 
+import com.example.queue.seat_reservation.application.queue.dto.request.IssueQueueRequestDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.springframework.http.ResponseEntity;
 
 public interface QueueControllerDocs {
     @Operation(
@@ -12,7 +14,7 @@ public interface QueueControllerDocs {
                     @ApiResponse(responseCode = "200", description = "토큰 발급 성공", useReturnTypeSchema = true)
             }
     )
-    void issueToken();
+    ResponseEntity<?> issueToken(IssueQueueRequestDto issueQueueRequestDto);
 
     @Operation(
             summary = "대기 순서 조회 API",

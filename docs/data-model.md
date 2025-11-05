@@ -448,7 +448,6 @@ WHERE status IN ('TEMP_RESERVED', 'CONFIRMED');
 ```
 userId: string
 status: "WAITING" | "ACTIVE"
-queuePosition: integer (WAITING일 때만)
 createdAt: timestamp
 activatedAt: timestamp (ACTIVE일 때만)
 ```
@@ -456,6 +455,11 @@ activatedAt: timestamp (ACTIVE일 때만)
 **TTL:**
 - WAITING: 무제한 (TTL 설정 안 함)
 - ACTIVE: 1800초 (30분)
+
+**Position 조회:**
+- queuePosition은 Hash에 저장하지 않음
+- 조회 시 `queue:waiting` Sorted Set의 ZRANK 명령어로 동적 계산
+- ZRANK 반환값(0-based) + 1 = 실제 대기 순번(1-based)
 
 **Example:**
 ```
@@ -467,6 +471,13 @@ queue:token:550e8400-e29b-41d4-a716-446655440000
   activatedAt: "2025-11-03T13:00:00Z"
 }
 TTL: 1800
+```
+
+**Position 조회 예시:**
+```
+Redis: ZRANK queue:waiting "550e8400-e29b-41d4-a716-446655440001"
+→ 반환값: 22 (0-based rank)
+→ 실제 대기 순번: 23번
 ```
 
 ---
@@ -495,18 +506,39 @@ queue:waiting
 
 ---
 
-### 6.3 활성 사용자 카운터
+### 6.3 활성 토큰 대기열 (Active Queue)
 
-**Key Pattern:** `queue:active:count`
+**Key Pattern:** `queue:active`
 
-**Data Structure:** String (integer)
+**Data Structure:** Sorted Set (ZSET)
 
-**용도:** 현재 입장된 (ACTIVE) 사용자 수 추적
+**Score:** 활성화 시간 (timestamp)
+
+**Value:** token
+
+**용도:**
+- ACTIVE 상태 토큰 관리
+- 활성 사용자 수 조회 (ZCARD 명령어, O(1))
+- 만료 대상 조회 가능
 
 **Example:**
 ```
-queue:active:count = "487"
+queue:active
+[
+  (1730620900, "550e8400-e29b-41d4-a716-446655440010"),
+  (1730620910, "550e8400-e29b-41d4-a716-446655440011"),
+  (1730620920, "550e8400-e29b-41d4-a716-446655440012")
+]
 ```
+
+**활성 사용자 수 조회:**
+```redis
+ZCARD queue:active  # 487
+```
+
+**참고:**
+- 별도 카운터(`queue:active:count`) 대신 Sorted Set의 ZCARD 사용
+- Single Source of Truth 원칙으로 데이터 불일치 방지
 
 ---
 
@@ -542,18 +574,21 @@ TTL: 1800
 
 ### 7.2 대기열 토큰 발급
 ```
-1. Redis: SET queue:user:user123 = token (중복 체크)
-2. Redis: ZADD queue:waiting timestamp token (WAITING 상태)
-3. RDB: INSERT INTO token_histories (token, user_id, status='WAITING', ...)
+1. Redis: HSET queue:token:{token} userId {userId} status WAITING createdAt {timestamp}
+2. Redis: SET queue:user:{userId} {token}
+3. Redis: ZADD queue:waiting {timestamp} {token}
+4. RDB: INSERT INTO token_histories (token, user_id, status='WAITING', ...)
 ```
+
+**참고**: 동일 사용자가 재발급 요청 시 기존 토큰 무효화 후 새 토큰 발급
 
 ### 7.3 대기열 입장 (WAITING → ACTIVE)
 ```
 1. Redis: ZRANGE queue:waiting 0 9 (상위 10명 조회)
 2. Redis: ZREM queue:waiting tokens (대기열에서 제거)
-3. Redis: HSET queue:token:{token} status ACTIVE, activatedAt timestamp
-4. Redis: EXPIRE queue:token:{token} 1800 (30분 TTL 설정)
-5. Redis: INCR queue:active:count (활성 사용자 수 증가)
+3. Redis: ZADD queue:active {timestamp} {token} (활성 대기열에 추가)
+4. Redis: HSET queue:token:{token} status ACTIVE, activatedAt timestamp
+5. Redis: EXPIRE queue:token:{token} 1800 (30분 TTL 설정)
 6. RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW() WHERE token=?
 ```
 
@@ -582,9 +617,9 @@ TTL: 1800
 11. INSERT INTO payment_histories (wallet_id, type='POINT_EARN', amount=point_earned, ...)
 12. UPDATE reservations SET status='CONFIRMED', confirmed_at=NOW() WHERE reservation_id=?
 13. UPDATE seats SET status='CONFIRMED', updated_at=NOW() WHERE seat_id=?
-14. Redis: DEL queue:token:{token} (토큰 만료)
-15. Redis: DEL queue:user:{userId} (사용자 토큰 매핑 제거)
-16. Redis: DECR queue:active:count (활성 사용자 수 감소)
+14. Redis: ZREM queue:active {token} (활성 대기열에서 제거)
+15. Redis: DEL queue:token:{token} (토큰 만료)
+16. Redis: DEL queue:user:{userId} (사용자 토큰 매핑 제거)
 17. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW() WHERE token=?
 18. COMMIT
 ```
@@ -614,25 +649,29 @@ WHERE seat_id IN (...);
 
 ### 8.2 대기열 입장 처리 (10초마다)
 ```
-1. Redis: GET queue:active:count
-2. IF active_count <= 500:
+1. Redis: ZCARD queue:active (현재 활성 사용자 수 조회)
+2. IF active_count < 500:
 3.   Redis: ZRANGE queue:waiting 0 9 (상위 10명)
 4.   FOR EACH token:
 5.     Redis: ZREM queue:waiting token
-6.     Redis: HSET queue:token:{token} status ACTIVE, activatedAt NOW()
-7.     Redis: EXPIRE queue:token:{token} 1800
-8.     Redis: INCR queue:active:count
+6.     Redis: ZADD queue:active {timestamp} token (활성 대기열에 추가)
+7.     Redis: HSET queue:token:{token} status ACTIVE, activatedAt NOW()
+8.     Redis: EXPIRE queue:token:{token} 1800
 9.     RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW()
 ```
 
 ### 8.3 만료된 ACTIVE 토큰 정리 (Redis TTL 기반)
 ```
 -- Redis TTL이 만료되면 자동 삭제됨
--- 만료 시 Redis 이벤트 리스너를 통해:
-1. Redis: DECR queue:active:count
+-- 만료 시 Redis Keyspace Notification 리스너를 통해:
+1. Redis: ZREM queue:active {token} (활성 대기열에서 제거)
 2. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW()
 3. 해당 사용자의 TEMP_RESERVED 예약이 있다면 만료 처리
 ```
+
+**참고:**
+- 활성 사용자 수는 `ZCARD queue:active` 명령어로 실시간 조회
+- 별도 카운터 업데이트 불필요 (데이터 불일치 방지)
 
 ---
 

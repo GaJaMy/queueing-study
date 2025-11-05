@@ -6,6 +6,10 @@ import com.example.queue.seat_reservation.application.exception.CustomException;
 import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Random;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -16,8 +20,19 @@ public class UserService {
         userAdaptor.saveUser(user);
     }
 
+    @Transactional(readOnly = true)
     public User getUser(String userId) {
-        return userAdaptor.getUser(userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.NOT_EXIST_USER));
+        String substring = UUID.randomUUID().toString().substring(0, 8);
+        return User.builder()
+                .userId(substring)
+                .build();
+//        return userAdaptor.getUser(userId)
+//                .orElseThrow(() -> new CustomException(ErrorCode.NOT_EXIST_USER));
+    }
+
+    public void validateUserExists(String userId) {
+        if (userAdaptor.getUser(userId).isEmpty()) {
+            throw new CustomException(ErrorCode.NOT_EXIST_USER);
+        }
     }
 }

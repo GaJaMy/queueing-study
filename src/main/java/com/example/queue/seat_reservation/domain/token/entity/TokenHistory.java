@@ -16,10 +16,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "token_histories", indexes = {
-    @Index(name = "idx_token_user", columnList = "user_id"),
-    @Index(name = "idx_token_status", columnList = "status"),
-    @Index(name = "idx_token_created", columnList = "created_at"),
-    @Index(name = "idx_user_status", columnList = "user_id, status")
+    @Index(name = "idx_token_histories_user", columnList = "user_id"),
+    @Index(name = "idx_token_histories_status", columnList = "status"),
+    @Index(name = "idx_token_histories_created", columnList = "created_at")
+//    @Index(name = "idx_user_status", columnList = "user_id, status")
 })
 @Entity
 @EntityListeners(AuditingEntityListener.class)

@@ -23,8 +23,8 @@ import java.time.LocalDateTime;
     @Index(name = "idx_reservation_user", columnList = "user_id"),
     @Index(name = "idx_reservation_seat", columnList = "seat_id"),
     @Index(name = "idx_reservation_status", columnList = "status"),
-    @Index(name = "idx_reservation_expires", columnList = "expires_at"),
-    @Index(name = "idx_user_status", columnList = "user_id, status")
+    @Index(name = "idx_reservation_expires", columnList = "expires_at")
+//    @Index(name = "idx_user_status", columnList = "user_id, status")
 })
 public class Reservation {
     @Id
