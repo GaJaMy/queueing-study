@@ -48,33 +48,12 @@ class QueueServiceTest {
         void issueQueueToken_Success() {
             // given
             String userId = "user123";
-            User user = User.builder()
-                    .userId(userId)
-                    .wallet(null)
-                    .name("홍길동")
-                    .email("test@test.com")
-                    .createdAt(null)
-                    .build();
+            String token = "test-token";
 
-            IssueQueueRequestDto requestDto = IssueQueueRequestDto.builder()
-                    .userId(userId)
-                    .build();
-
-            // TODO: Mock 설정 - temporaryRepositoryService의 동작 정의
             // when
-            when(userService.getUser(anyString())).thenReturn(user);
-            IssueQueueResponseDto response = queueService.issueQueueToken(requestDto);
-
-            // then
-            // TODO: 응답 검증 - 내부 로직 구현 후 작성
-            assertThat(response).isNotNull();
-            assertThat(response.getToken()).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("WAITING");
+            queueService.issueQueueToken(token, userId);
 
             // then verify
-            verify(userService, times(1))
-                    .getUser(anyString());
-
             verify(temporaryRepositoryAdaptor, times(1))
                     .save(anyString(), any());
 
@@ -83,118 +62,6 @@ class QueueServiceTest {
 
             verify(temporaryRepositoryAdaptor, times(1))
                     .saveZSet(anyString(), anyString());
-        }
-
-        @Test
-        @DisplayName("실패 - 존재하지 않는 사용자")
-        void issueQueueToken_Fail_UserNotFound() {
-            // given
-            String nonExistentUserId = "nonExistentUser";
-            IssueQueueRequestDto requestDto = IssueQueueRequestDto.builder()
-                    .userId(nonExistentUserId)
-                    .build();
-
-            when(userService.getUser(nonExistentUserId)).thenThrow(new CustomException(ErrorCode.NOT_EXIST_USER));
-
-            // when & then
-            CustomException exception = assertThrows(CustomException.class,
-                    () -> queueService.issueQueueToken(requestDto));
-            assertEquals(ErrorCode.NOT_EXIST_USER, exception.getErrorCode());
-        }
-    }
-
-    @Nested
-    @DisplayName("큐 대기열 순서 조회 테스트")
-    class GetQueuePositionTest {
-
-        @Test
-        @DisplayName("성공 - 대기열 순서 조회")
-        void getQueuePosition_Success() {
-            // given
-            String token = "valid-token-123";
-
-            HashMap<String, Object> tokenInfo = new HashMap<>();
-            tokenInfo.put("userId", "user123");
-            tokenInfo.put("status", QueueTokenStatus.WAITING);
-            tokenInfo.put("createdAt", LocalDateTime.now());
-            tokenInfo.put("activatedAt", null);
-
-            // TODO: Mock 설정
-            when(queueService.getQueuePosition(anyString(), eq(token))).thenReturn(5L);
-            when(queueService.getQueueTokenInfo(anyString())).thenReturn(tokenInfo);
-
-            // when
-            GetQueuePositionResponseDto response = queueService.getQueuePosition(token);
-
-            // then
-            // TODO: 응답 검증
-            assertThat(response).isNotNull();
-            assertThat(response.getToken()).isEqualTo(token);
-            assertThat(response.getStatus()).isEqualTo(QueueTokenStatus.WAITING);
-            assertThat(response.getQueuePosition()).isEqualTo(6);
-            assertThat(response.getRemainingWaitCount()).isEqualTo(5);
-            assertThat(response.getEstimatedWaitTime()).isEqualTo(50);
-        }
-
-        @Test
-        @DisplayName("실패 - 존재하지 않는 토큰")
-        void getQueuePosition_Fail_TokenNotFound() {
-            // given
-            String nonExistentToken = "non-existent-token-123";
-
-            when(queueService.getQueueTokenInfo(anyString()))
-                    .thenThrow(new CustomException(ErrorCode.NOT_EXIST_TOKEN_INFO));
-
-            // when & then
-            CustomException exception = assertThrows(CustomException.class,
-                    () -> queueService.getQueuePosition(nonExistentToken));
-            assertEquals(ErrorCode.NOT_EXIST_TOKEN_INFO, exception.getErrorCode());
-        }
-
-        @Test
-        @DisplayName("실패 - 사용자가 존재하지 않음")
-        void getQueuePosition_Fail_UserNotFound() {
-            // given
-            String nonExistentToken = "non-existent-token-123";
-
-            HashMap<String, Object> tokenInfo = new HashMap<>();
-            tokenInfo.put("userId", "user123");
-            tokenInfo.put("status", QueueTokenStatus.WAITING);
-            tokenInfo.put("createdAt", LocalDateTime.now());
-            tokenInfo.put("activatedAt", null);
-
-            when(queueService.getQueueTokenInfo(anyString()))
-                    .thenReturn(tokenInfo);
-            //void 메서드는 doThrow 사용
-            doThrow(new CustomException(ErrorCode.NOT_EXIST_USER))
-                    .when(userService).validateUserExists(anyString());
-
-            // when & then
-            CustomException exception = assertThrows(CustomException.class,
-                    () -> queueService.getQueuePosition(nonExistentToken));
-            assertEquals(ErrorCode.NOT_EXIST_USER, exception.getErrorCode());
-        }
-
-        @Test
-        @DisplayName("성공 - 대기열 1번인 경우")
-        void getQueuePosition_Success_FirstInQueue() {
-            // given
-            String token = "first-token";
-            HashMap<String, Object> userInfo = new HashMap<>();
-            userInfo.put("userId", "user123");
-            userInfo.put("status", QueueTokenStatus.WAITING);
-            userInfo.put("createdAt", LocalDateTime.now());
-            userInfo.put("activatedAt", null);
-
-            when(queueService.getQueuePosition(anyString(), eq(token))).thenReturn(0L);
-            when(queueService.getQueueTokenInfo(anyString())).thenReturn(userInfo);
-
-            // when
-            GetQueuePositionResponseDto response = queueService.getQueuePosition(token);
-
-            // then
-             assertThat(response.getQueuePosition()).isEqualTo(1);
-             assertThat(response.getRemainingWaitCount()).isEqualTo(0);
         }
     }
 }

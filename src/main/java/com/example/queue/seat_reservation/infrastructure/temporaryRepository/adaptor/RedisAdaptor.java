@@ -44,11 +44,6 @@ public class RedisAdaptor implements TemporaryRepositoryAdaptor {
     }
 
     @Override
-    public void incrementIntValue(String key) {
-        redisTemplate.opsForValue().increment(key);
-    }
-
-    @Override
     public void saveZSet(String key, String value) {
         redisTemplate.opsForZSet().add(key, value, System.currentTimeMillis());
     }
@@ -56,20 +51,6 @@ public class RedisAdaptor implements TemporaryRepositoryAdaptor {
     @Override
     public void saveSet(String key, String value) {
         redisTemplate.opsForSet().add(key, value);
-    }
-
-    @Override
-    public Integer getIntValue(String key) {
-        Object value = redisTemplate.opsForValue().get(key);
-
-        if (value == null) {
-            return null;
-        }
-
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        return Integer.parseInt(value.toString());
     }
 
     @Override
@@ -98,6 +79,16 @@ public class RedisAdaptor implements TemporaryRepositoryAdaptor {
     }
 
     @Override
+    public void deleteHash(String key) {
+        redisTemplate.delete(key);
+    }
+
+    @Override
+    public String get(String key) {
+        return (String) redisTemplate.opsForValue().get(key);
+    }
+
+    @Override
     public Set<String> getSet(String key) {
         Set<Object> members = redisTemplate.opsForSet().members(key);
         if (members == null) {
@@ -115,11 +106,6 @@ public class RedisAdaptor implements TemporaryRepositoryAdaptor {
         }
 
         return members.stream().map(Object::toString).collect(Collectors.toSet());
-    }
-
-    @Override
-    public void deleteHash(String key) {
-        redisTemplate.opsForHash().delete(key);
     }
 
     @Override

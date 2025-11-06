@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface WalletAdaptor {
     Optional<Wallet> getWallet(String userId);
+    void saveWallet(Wallet wallet);
 }

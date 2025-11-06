@@ -2,9 +2,15 @@ package com.example.queue.seat_reservation.interfaces.queue.swagger;
 
 
 import com.example.queue.seat_reservation.application.queue.dto.request.IssueQueueRequestDto;
+import com.example.queue.seat_reservation.application.queue.dto.response.GetQueuePositionResponseDto;
+import com.example.queue.seat_reservation.application.queue.dto.response.IssueQueueResponseDto;
+import com.example.queue.seat_reservation.interfaces.common.response.ResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 public interface QueueControllerDocs {
     @Operation(
@@ -14,7 +20,9 @@ public interface QueueControllerDocs {
                     @ApiResponse(responseCode = "200", description = "토큰 발급 성공", useReturnTypeSchema = true)
             }
     )
-    ResponseEntity<?> issueToken(IssueQueueRequestDto issueQueueRequestDto);
+    ResponseEntity<ResponseDto<IssueQueueResponseDto>> issueToken(
+            @Valid @RequestBody IssueQueueRequestDto issueQueueRequestDto
+    );
 
     @Operation(
             summary = "대기 순서 조회 API",
@@ -23,5 +31,7 @@ public interface QueueControllerDocs {
                     @ApiResponse(responseCode = "200", description = "대기 순서 조회 성공", useReturnTypeSchema = true)
             }
     )
-    void getQueueStatus();
+    ResponseEntity<ResponseDto<GetQueuePositionResponseDto>> getQueueStatus(
+            @Valid @RequestHeader("X-Queue-Token") String token
+    );
 }

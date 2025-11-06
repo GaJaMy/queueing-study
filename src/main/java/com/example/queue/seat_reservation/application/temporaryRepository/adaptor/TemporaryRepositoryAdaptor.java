@@ -16,13 +16,9 @@ public interface TemporaryRepositoryAdaptor {
 
     void save(String key, Object value, Long ttl, TimeUnit timeUnit);
 
-    void incrementIntValue(String key);
-
     void saveZSet(String key, String value);
 
     void saveSet(String key, String value);
-
-    Integer getIntValue(String key);
 
     HashMap<String, Object> getHash(String key);
 
@@ -30,11 +26,13 @@ public interface TemporaryRepositoryAdaptor {
 
     void deleteSet(String key, String value);
 
+    void deleteHash(String key);
+
+    String get(String key);
+
     Set<String> getSet(String key);
 
     Set<String> getZSet(String key);
-
-    void deleteHash(String key);
 
     List<String> getSetRanking(String key, int start, int end);
 

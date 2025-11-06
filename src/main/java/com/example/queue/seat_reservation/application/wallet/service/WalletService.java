@@ -17,4 +17,11 @@ public class WalletService {
         return walletAdaptor.getWallet(user.getUserId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVER_ERROR));
     }
+
+    public Wallet createWallet() {
+        return Wallet.builder()
+                .cash(0)
+                .point(0)
+                .build();
+    }
 }

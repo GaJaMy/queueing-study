@@ -20,4 +20,9 @@ public class WalletJpaAdaptor implements WalletAdaptor {
     public Optional<Wallet> getWallet(String userId) {
         return walletRepository.findByUser_UserId(userId);
     }
+
+    @Override
+    public void saveWallet(Wallet wallet) {
+        walletRepository.save(wallet);
+    }
 }

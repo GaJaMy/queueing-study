@@ -2,13 +2,8 @@ package com.example.queue.seat_reservation.application.queue.service;
 
 import com.example.queue.seat_reservation.application.exception.CustomException;
 import com.example.queue.seat_reservation.application.exception.ErrorCode;
-import com.example.queue.seat_reservation.application.queue.dto.request.IssueQueueRequestDto;
-import com.example.queue.seat_reservation.application.queue.dto.response.GetQueuePositionResponseDto;
-import com.example.queue.seat_reservation.application.queue.dto.response.IssueQueueResponseDto;
 import com.example.queue.seat_reservation.application.temporaryRepository.adaptor.TemporaryRepositoryAdaptor;
-import com.example.queue.seat_reservation.application.user.service.UserService;
 import com.example.queue.seat_reservation.domain.queueToken.entity.QueueTokenStatus;
-import com.example.queue.seat_reservation.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,7 +13,6 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -26,39 +20,33 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class QueueService {
     private final static String QUEUE_ACTIVE_KEY = "queue:active";
-    private final static String QUEUE_ACTIVE_COUNT_KEY = "queue:active:count";
     private final static String QUEUE_WAITING_KEY = "queue:waiting";
     private final static String QUEUE_TOKEN_KEY_PREFIX = "queue:token:";
     private final static String QUEUE_USER_MAPPING_KEY_PREFIX = "queue:user";
+    private final static long TOKEN_EXPIRE_TIME = 1800L; // 30분
 
     private final TemporaryRepositoryAdaptor temporaryRepositoryAdaptor;
-    private final UserService userService;
 
-    //큐 발급
-    @Transactional
-    public IssueQueueResponseDto issueQueueToken(IssueQueueRequestDto dto) {
-        // 토큰 생성
-        String token = UUID.randomUUID().toString();
-
-        // 사용자 가져오기
-        User user = userService.getUser(dto.getUserId());
-
+    public void issueQueueToken(String token, String userId) {
         // 대기열 토큰 키
         String queueTokenKey = genQueueTokenKey(token);
         // 대기열 토큰 정보
-        HashMap<String, Object> queueTokenInfo = genQueueTokenInfo(user.getUserId(), QueueTokenStatus.WAITING);
+        HashMap<String, Object> queueTokenInfo = genQueueTokenInfo(userId, QueueTokenStatus.WAITING);
 
         // 사용자-토큰 매핑 키 만들기
-        String userTokenMappingKey = genUserTokenMappingKey(user.getUserId());
+        String userTokenMappingKey = genUserTokenMappingKey(userId);
+
+        // 이전에 발급해준 토큰이 있었다면 삭제
+        String beforeToken = temporaryRepositoryAdaptor.get(userTokenMappingKey);
+        if (beforeToken != null) {
+            String beforeQueueTokenKey = genQueueTokenKey(beforeToken);
+            temporaryRepositoryAdaptor.deleteZSet(QUEUE_WAITING_KEY, beforeToken);
+            temporaryRepositoryAdaptor.deleteHash(beforeQueueTokenKey);
+        }
 
         temporaryRepositoryAdaptor.save(queueTokenKey, queueTokenInfo);
         temporaryRepositoryAdaptor.save(userTokenMappingKey, token);
         temporaryRepositoryAdaptor.saveZSet(QUEUE_WAITING_KEY, token);
-
-        return IssueQueueResponseDto.builder()
-                .token(token)
-                .status(QueueTokenStatus.WAITING.name())
-                .build();
     }
 
     public HashMap<String, Object> genQueueTokenInfo(String userId, QueueTokenStatus status) {
@@ -71,11 +59,11 @@ public class QueueService {
 
     }
 
-    private String genQueueTokenKey(String token) {
+    public String genQueueTokenKey(String token) {
         return QUEUE_TOKEN_KEY_PREFIX + token;
     }
 
-    private String genUserTokenMappingKey(String userId) {
+    public String genUserTokenMappingKey(String userId) {
         return QUEUE_USER_MAPPING_KEY_PREFIX + ":" + userId;
     }
 
@@ -87,25 +75,6 @@ public class QueueService {
             throw new CustomException(ErrorCode.NOT_EXIST_TOKEN);
         }
         return temporaryRepositoryAdaptor.getHash(queueTokenKey);
-    }
-
-    // 큐 대기열 순서 가져오기
-    public GetQueuePositionResponseDto getQueuePosition(String token) {
-        HashMap<String, Object> queueTokenInfo = getQueueTokenInfo(token);
-
-        String userId = (String) queueTokenInfo.get("userId");
-        userService.validateUserExists(userId);
-
-        long position = getQueuePosition(QUEUE_WAITING_KEY, token);
-        long estimatedWaitTime = position * 10;
-
-        return GetQueuePositionResponseDto.builder()
-                .token(token)
-                .status(QueueTokenStatus.WAITING)
-                .queuePosition((int) position + 1)
-                .remainingWaitCount((int) position)
-                .estimatedWaitTime((int) estimatedWaitTime)
-                .build();
     }
 
     public long getQueuePosition(String key, String token) {
@@ -130,6 +99,10 @@ public class QueueService {
             return 0L;
         }
         return set.size();
+    }
+
+    public long getQueuePosition(String token) {
+        return getQueuePosition(QUEUE_WAITING_KEY, token);
     }
 
     @Transactional
@@ -168,8 +141,8 @@ public class QueueService {
         queTokenInfo.put("status", QueueTokenStatus.ACTIVE);
         queTokenInfo.put("activatedAt", LocalDateTime.now());
 
-        temporaryRepositoryAdaptor.save(queueTokenKey, queTokenInfo, 60L, TimeUnit.SECONDS);
-        temporaryRepositoryAdaptor.save(userTokenMappingKey, token, 60L, TimeUnit.SECONDS);
+        temporaryRepositoryAdaptor.save(queueTokenKey, queTokenInfo, TOKEN_EXPIRE_TIME, TimeUnit.SECONDS);
+        temporaryRepositoryAdaptor.save(userTokenMappingKey, token, TOKEN_EXPIRE_TIME, TimeUnit.SECONDS);
         temporaryRepositoryAdaptor.deleteZSet(QUEUE_WAITING_KEY, token);
         temporaryRepositoryAdaptor.saveSet(QUEUE_ACTIVE_KEY, token);
     }

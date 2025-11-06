@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class QueueSchedulerService {
     private final QueueService queueService;
-    private final UserService userService;
 
     public void activateWaitingQueue() {
         long activeTokenCount = queueService.getActiveTokenCount();
