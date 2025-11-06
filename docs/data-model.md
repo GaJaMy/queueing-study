@@ -83,7 +83,6 @@
 │ token (Key)             │
 │ userId                  │
 │ status (WAITING/ACTIVE) │
-│ queuePosition           │
 │ createdAt               │
 │ TTL (ACTIVE: 30분)     │
 └─────────────────────────┘
@@ -506,39 +505,36 @@ queue:waiting
 
 ---
 
-### 6.3 활성 토큰 대기열 (Active Queue)
+### 6.3 활성 토큰 Set (Active Token Set)
 
 **Key Pattern:** `queue:active`
 
-**Data Structure:** Sorted Set (ZSET)
-
-**Score:** 활성화 시간 (timestamp)
+**Data Structure:** Set
 
 **Value:** token
 
 **용도:**
 - ACTIVE 상태 토큰 관리
-- 활성 사용자 수 조회 (ZCARD 명령어, O(1))
-- 만료 대상 조회 가능
+- 활성 사용자 수 조회 (SCARD 명령어, O(1))
+- TTL 만료된 토큰 자동 정리 (스케줄러)
 
 **Example:**
 ```
 queue:active
-[
-  (1730620900, "550e8400-e29b-41d4-a716-446655440010"),
-  (1730620910, "550e8400-e29b-41d4-a716-446655440011"),
-  (1730620920, "550e8400-e29b-41d4-a716-446655440012")
-]
+Set ["550e8400-e29b-41d4-a716-446655440010",
+     "550e8400-e29b-41d4-a716-446655440011",
+     "550e8400-e29b-41d4-a716-446655440012"]
 ```
 
 **활성 사용자 수 조회:**
 ```redis
-ZCARD queue:active  # 487
+SCARD queue:active  # 487
 ```
 
-**참고:**
-- 별도 카운터(`queue:active:count`) 대신 Sorted Set의 ZCARD 사용
-- Single Source of Truth 원칙으로 데이터 불일치 방지
+**동기화 로직:**
+- 스케줄러(10초마다)가 Set의 각 토큰이 실제 Hash에 존재하는지 확인
+- Hash가 없으면 (TTL 만료) Set에서 자동 제거
+- 이를 통해 TTL 만료와 Set 동기화
 
 ---
 
@@ -586,7 +582,7 @@ TTL: 1800
 ```
 1. Redis: ZRANGE queue:waiting 0 9 (상위 10명 조회)
 2. Redis: ZREM queue:waiting tokens (대기열에서 제거)
-3. Redis: ZADD queue:active {timestamp} {token} (활성 대기열에 추가)
+3. Redis: SADD queue:active {token} (활성 토큰 Set에 추가)
 4. Redis: HSET queue:token:{token} status ACTIVE, activatedAt timestamp
 5. Redis: EXPIRE queue:token:{token} 1800 (30분 TTL 설정)
 6. RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW() WHERE token=?
@@ -617,8 +613,8 @@ TTL: 1800
 11. INSERT INTO payment_histories (wallet_id, type='POINT_EARN', amount=point_earned, ...)
 12. UPDATE reservations SET status='CONFIRMED', confirmed_at=NOW() WHERE reservation_id=?
 13. UPDATE seats SET status='CONFIRMED', updated_at=NOW() WHERE seat_id=?
-14. Redis: ZREM queue:active {token} (활성 대기열에서 제거)
-15. Redis: DEL queue:token:{token} (토큰 만료)
+14. Redis: SREM queue:active {token} (활성 토큰 Set에서 제거)
+15. Redis: DEL queue:token:{token} (토큰 Hash 삭제)
 16. Redis: DEL queue:user:{userId} (사용자 토큰 매핑 제거)
 17. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW() WHERE token=?
 18. COMMIT
@@ -649,29 +645,43 @@ WHERE seat_id IN (...);
 
 ### 8.2 대기열 입장 처리 (10초마다)
 ```
-1. Redis: ZCARD queue:active (현재 활성 사용자 수 조회)
-2. IF active_count < 500:
-3.   Redis: ZRANGE queue:waiting 0 9 (상위 10명)
-4.   FOR EACH token:
-5.     Redis: ZREM queue:waiting token
-6.     Redis: ZADD queue:active {timestamp} token (활성 대기열에 추가)
-7.     Redis: HSET queue:token:{token} status ACTIVE, activatedAt NOW()
-8.     Redis: EXPIRE queue:token:{token} 1800
-9.     RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW()
-```
-
-### 8.3 만료된 ACTIVE 토큰 정리 (Redis TTL 기반)
-```
--- Redis TTL이 만료되면 자동 삭제됨
--- 만료 시 Redis Keyspace Notification 리스너를 통해:
-1. Redis: ZREM queue:active {token} (활성 대기열에서 제거)
-2. RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW()
-3. 해당 사용자의 TEMP_RESERVED 예약이 있다면 만료 처리
+1. Redis: SMEMBERS queue:active (활성 토큰 Set 조회)
+2. FOR EACH token IN active_tokens:
+3.   IF NOT EXISTS queue:token:{token}:
+4.     Redis: SREM queue:active {token} (TTL 만료된 토큰 정리)
+5. Redis: SCARD queue:active (정리 후 활성 사용자 수)
+6. IF active_count < 500:
+7.   Redis: ZRANGE queue:waiting 0 9 (상위 10명)
+8.   FOR EACH token:
+9.     Redis: ZREM queue:waiting token
+10.    Redis: SADD queue:active token (활성 Set에 추가)
+11.    Redis: HSET queue:token:{token} status ACTIVE, activatedAt NOW()
+12.    Redis: EXPIRE queue:token:{token} 1800
+13.    RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW()
 ```
 
 **참고:**
-- 활성 사용자 수는 `ZCARD queue:active` 명령어로 실시간 조회
-- 별도 카운터 업데이트 불필요 (데이터 불일치 방지)
+- 먼저 TTL 만료된 토큰을 Set에서 정리 (동기화)
+- 정리 후 실제 활성 사용자 수로 입장 여부 판단
+
+### 8.3 만료된 ACTIVE 토큰 정리
+```
+-- TTL로 Hash는 자동 삭제됨
+-- queue:active Set 정리는 8.2 스케줄러에서 처리 (10초마다)
+-- 즉, 최대 10초 지연 후 동기화됨
+
+-- 선택사항: Keyspace Notification 리스너로 즉시 처리
+1. 만료 이벤트 수신: __keyevent@0__:expired
+2. IF key.startsWith("queue:token:"):
+3.   token = extractToken(key)
+4.   Redis: SREM queue:active {token}
+5.   RDB: UPDATE token_histories SET status='EXPIRED', expired_at=NOW()
+```
+
+**참고:**
+- **동기화 방식**: 스케줄러가 10초마다 Hash 존재 여부 확인 후 Set 정리
+- **지연 시간**: 최대 10초 (TTL 만료 시점과 다음 스케줄러 실행 사이)
+- **정확성**: 활성 사용자 수 조회 시 항상 동기화 후 측정하므로 정확함
 
 ---
 

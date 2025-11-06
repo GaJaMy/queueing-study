@@ -2,7 +2,6 @@ package com.example.queue.seat_reservation.application.queue.usecase;
 
 import com.example.queue.seat_reservation.application.exception.CustomException;
 import com.example.queue.seat_reservation.application.exception.ErrorCode;
-import com.example.queue.seat_reservation.application.queue.adaptor.QueueTokenAdaptor;
 import com.example.queue.seat_reservation.application.queue.dto.request.IssueQueueRequestDto;
 import com.example.queue.seat_reservation.application.queue.dto.response.GetQueuePositionResponseDto;
 import com.example.queue.seat_reservation.application.queue.dto.response.IssueQueueResponseDto;
@@ -23,7 +22,8 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -35,9 +35,6 @@ class QueueServiceTest {
 
     @Mock
     private TemporaryRepositoryAdaptor temporaryRepositoryAdaptor;
-
-    @Mock
-    private QueueTokenAdaptor queueTokenAdaptor;
 
     @InjectMocks
     private QueueService queueService;
@@ -78,14 +75,14 @@ class QueueServiceTest {
             verify(userService, times(1))
                     .getUser(anyString());
 
-            verify(queueTokenAdaptor, times(1))
-                    .save(any());
+            verify(temporaryRepositoryAdaptor, times(1))
+                    .save(anyString(), any());
 
             verify(temporaryRepositoryAdaptor, times(1))
                     .save(anyString(), anyString());  // 1번 호출됨
 
             verify(temporaryRepositoryAdaptor, times(1))
-                    .saveSortedSet(anyString(), anyString());
+                    .saveZSet(anyString(), anyString());
         }
 
         @Test
@@ -124,7 +121,7 @@ class QueueServiceTest {
 
             // TODO: Mock 설정
             when(queueService.getQueuePosition(anyString(), eq(token))).thenReturn(5L);
-            when(queueService.getTokenInfo(anyString())).thenReturn(tokenInfo);
+            when(queueService.getQueueTokenInfo(anyString())).thenReturn(tokenInfo);
 
             // when
             GetQueuePositionResponseDto response = queueService.getQueuePosition(token);
@@ -145,7 +142,7 @@ class QueueServiceTest {
             // given
             String nonExistentToken = "non-existent-token-123";
 
-            when(queueService.getTokenInfo(anyString()))
+            when(queueService.getQueueTokenInfo(anyString()))
                     .thenThrow(new CustomException(ErrorCode.NOT_EXIST_TOKEN_INFO));
 
             // when & then
@@ -166,7 +163,7 @@ class QueueServiceTest {
             tokenInfo.put("createdAt", LocalDateTime.now());
             tokenInfo.put("activatedAt", null);
 
-            when(queueService.getTokenInfo(anyString()))
+            when(queueService.getQueueTokenInfo(anyString()))
                     .thenReturn(tokenInfo);
             //void 메서드는 doThrow 사용
             doThrow(new CustomException(ErrorCode.NOT_EXIST_USER))
@@ -190,7 +187,7 @@ class QueueServiceTest {
             userInfo.put("activatedAt", null);
 
             when(queueService.getQueuePosition(anyString(), eq(token))).thenReturn(0L);
-            when(queueService.getTokenInfo(anyString())).thenReturn(userInfo);
+            when(queueService.getQueueTokenInfo(anyString())).thenReturn(userInfo);
 
             // when
             GetQueuePositionResponseDto response = queueService.getQueuePosition(token);

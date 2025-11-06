@@ -4,24 +4,20 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.TimeToLive;
 
 import java.time.LocalDateTime;
 
+/**
+ * Redis에 저장되는 대기열 토큰
+ * - RedisTemplate으로 직접 관리
+ * - @RedisHash 제거 (제약 회피)
+ */
 @Getter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@RedisHash(value = "queue:token")
 public class QueueToken {
-    @Id
     private String token;
-
-    @TimeToLive
-    private Long ttl;
-
     private String userId;
     private QueueTokenStatus status;
     private LocalDateTime createdAt;
@@ -33,9 +29,5 @@ public class QueueToken {
 
     public void modifyActivatedAt(LocalDateTime activatedAt) {
         this.activatedAt = activatedAt;
-    }
-
-    public void modifyTtl(Long ttl) {
-        this.ttl = ttl;
     }
 }
