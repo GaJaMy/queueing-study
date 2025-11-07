@@ -25,7 +25,7 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 public class Seat {
     @Id
-    @Column(name = "seat_id", length = 10)
+    @Column(name = "seat_id", length = 20)
     private String seatId;
 
     @Column(name = "seat_number", length = 20, nullable = false)
@@ -48,4 +48,8 @@ public class Seat {
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public void modifyStatus(SeatStatus status) {
+        this.status = status;
+    }
 }

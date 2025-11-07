@@ -42,4 +42,8 @@ public class Wallet {
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public void addCash(int amount) {
+        this.cash += amount;
+    }
 }

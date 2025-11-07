@@ -7,6 +7,7 @@ import com.example.queue.seat_reservation.application.exception.CustomException;
 import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,5 +24,11 @@ public class WalletService {
                 .cash(0)
                 .point(0)
                 .build();
+    }
+
+    @Transactional
+    public void chargeCash(User user, int amount) {
+        Wallet wallet = user.getWallet();
+        wallet.addCash(amount);
     }
 }
