@@ -37,8 +37,11 @@ public class PaymentHistory {
     @Column(name = "amount", nullable = false)
     private Integer amount;
 
-    @Column(name = "balance_after", nullable = false)
-    private Integer balanceAfter;
+    @Column(name = "cash_after", nullable = false)
+    private Integer cashAfter;
+
+    @Column(name = "point_after", nullable = false)
+    private Integer pointAfter;
 
     @Column(name = "description")
     private String description;

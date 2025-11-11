@@ -1,6 +1,9 @@
 package com.example.queue.seat_reservation.application.reservation.service;
 
+import com.example.queue.seat_reservation.application.exception.CustomException;
+import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import com.example.queue.seat_reservation.application.reservation.adaptor.ReservationAdaptor;
+import com.example.queue.seat_reservation.application.seat.service.SeatService;
 import com.example.queue.seat_reservation.domain.reservation.entity.Reservation;
 import com.example.queue.seat_reservation.domain.reservation.entity.ReservationStatus;
 import com.example.queue.seat_reservation.domain.seat.entity.Seat;
@@ -14,6 +17,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class ReservationService {
     private final ReservationAdaptor reservationAdaptor;
+    private final SeatService seatService;
 
     public Reservation createReservation(User user, Seat seat) {
         Reservation reservation = Reservation.builder()
@@ -24,6 +28,18 @@ public class ReservationService {
                 .expiresAt(LocalDateTime.now().plusMinutes(30))
                 .build();
 
+        return reservationAdaptor.save(reservation);
+    }
+
+    public Reservation getReservation(String reservationId) {
+        return reservationAdaptor.getReservation(reservationId)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_EXIST_RESERVATION));
+    }
+
+    public Reservation updateReservation(String reservationId, ReservationStatus status) {
+        Reservation reservation = getReservation(reservationId);
+        reservation.modifyStatus(status);
+        seatService.updateSeat(reservation.getSeat());
         return reservationAdaptor.save(reservation);
     }
 }

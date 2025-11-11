@@ -31,4 +31,30 @@ public class WalletService {
         Wallet wallet = user.getWallet();
         wallet.addCash(amount);
     }
+
+    public int usePoint(Wallet wallet, int amount) {
+        return wallet.consumePoint(amount);
+    }
+
+    public int useCash(Wallet wallet, int amount) {
+        return wallet.consumeCash(amount);
+    }
+
+    public Wallet consumeCash(Wallet wallet, int price, boolean isPoint) {
+        Integer cash = wallet.getCash();
+        Integer point = wallet.getPoint();
+
+        if (cash + point < price) {
+            throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
+        }
+
+        if (isPoint) {
+            price = wallet.consumePoint(price);
+            wallet.consumeCash(price);
+        } else {
+            wallet.consumeCash(price);
+        }
+
+        return wallet;
+    }
 }

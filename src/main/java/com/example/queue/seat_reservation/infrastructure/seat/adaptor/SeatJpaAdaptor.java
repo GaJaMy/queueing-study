@@ -38,7 +38,7 @@ public class SeatJpaAdaptor implements SeatAdaptor {
     }
 
     @Override
-    public void updateSeat() {
-
+    public Seat save(Seat seat) {
+        return seatRepository.save(seat);
     }
 }

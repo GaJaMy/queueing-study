@@ -58,4 +58,8 @@ public class Reservation {
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "confirmed_at")
     private LocalDateTime confirmedAt;
+
+    public void modifyStatus(ReservationStatus status) {
+        this.status = status;
+    }
 }

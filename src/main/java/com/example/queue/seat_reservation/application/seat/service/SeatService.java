@@ -41,4 +41,9 @@ public class SeatService {
 
         return seat;
     }
+
+    public void updateSeat(Seat seat) {
+        seat.modifyStatus(SeatStatus.CONFIRMED);
+        seatAdaptor.save(seat);
+    }
 }

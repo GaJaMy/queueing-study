@@ -14,5 +14,5 @@ public interface SeatAdaptor {
 
     Optional<Seat> getSeatBySeatId(String seatId);
 
-    void updateSeat();
+    Seat save(Seat seat);
 }

@@ -7,6 +7,8 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 @RequiredArgsConstructor
 public class ReservationJpaAdaptor implements ReservationAdaptor {
@@ -16,5 +18,10 @@ public class ReservationJpaAdaptor implements ReservationAdaptor {
     @Override
     public Reservation save(Reservation reservation) {
         return reservationRepository.save(reservation);
+    }
+
+    @Override
+    public Optional<Reservation> getReservation(String reservationId) {
+        return reservationRepository.findById(reservationId);
     }
 }

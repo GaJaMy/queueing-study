@@ -1,5 +1,7 @@
 package com.example.queue.seat_reservation.domain.wallet.entity;
 
+import com.example.queue.seat_reservation.application.exception.CustomException;
+import com.example.queue.seat_reservation.application.exception.ErrorCode;
 import com.example.queue.seat_reservation.domain.user.entity.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -45,5 +47,24 @@ public class Wallet {
 
     public void addCash(int amount) {
         this.cash += amount;
+    }
+
+    public int consumeCash(int price) {
+        if (price > this.cash) {
+            throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
+        }
+        this.cash -= price;
+
+        return price;
+    }
+
+    public void addPoint(int amount) {
+        this.point += amount;
+    }
+
+    public int consumePoint(int price) {
+        int usedPoint = Math.min(price, this.point);
+        this.point -= usedPoint;
+        return usedPoint;
     }
 }
