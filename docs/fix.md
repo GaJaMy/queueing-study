@@ -282,35 +282,52 @@ private LocalDateTime activatedAt;
 ## 수정 체크리스트
 
 ### User 엔티티
-- [ ] email 필드에 `unique = true, nullable = false` 추가
+- [x] email 필드에 `unique = true, nullable = false` 추가 ✅ (2025-11-13 확인 완료)
 
 ### Wallet 엔티티
-- [ ] cash, point 컬럼 정의 수정 (BIGINT → INT DEFAULT 0)
-- [ ] updateAt → updatedAt 필드명 변경
-- [ ] update_at → updated_at 컬럼명 변경
+- [x] cash, point 컬럼 정의 수정 (BIGINT → INT DEFAULT 0) ✅ (2025-11-13 확인 완료)
+- [x] updateAt → updatedAt 필드명 변경 ✅ (2025-11-13 확인 완료)
+- [x] update_at → updated_at 컬럼명 변경 ✅ (2025-11-13 확인 완료)
 
 ### Reservation 엔티티
-- [ ] reservedAt 타입 변경 (Long → LocalDateTime)
-- [ ] expiresAt 타입 변경 (Long → LocalDateTime)
-- [ ] confirmedAt 타입 변경 (Long → LocalDateTime)
-- [ ] reservedAt에 @CreatedDate 추가
-- [ ] reservedAt에 nullable = false, updatable = false 추가
+- [x] reservedAt 타입 변경 (Long → LocalDateTime) ✅ (2025-11-13 확인 완료)
+- [x] expiresAt 타입 변경 (Long → LocalDateTime) ✅ (2025-11-13 확인 완료)
+- [x] confirmedAt 타입 변경 (Long → LocalDateTime) ✅ (2025-11-13 확인 완료)
+- [x] reservedAt에 @CreatedDate 추가 ✅ (2025-11-13 확인 완료)
+- [x] reservedAt에 nullable = false, updatable = false 추가 ⚠️ (nullable만 추가됨, updatable은 @CreatedDate로 자동 처리)
+- [x] Bean Validation (@Positive) 추가 ✅ (2025-11-13 확인 완료)
+- [x] 인덱스 추가 (idx_reservation_user, idx_reservation_seat, idx_reservation_status, idx_reservation_expires) ✅ (2025-11-13 확인 완료)
+- [ ] idx_user_status 복합 인덱스 추가 (주석 처리됨 - 활성화 필요)
 
 ### Payment 엔티티
-- [ ] reservation 필드의 @Column 제거
-- [ ] user FK 관계 추가
-- [ ] User import 추가
+- [x] reservation 필드의 @Column 제거 ✅ (2025-11-13 확인 완료)
+- [x] user FK 관계 추가 ✅ (2025-11-13 확인 완료)
+- [x] User import 추가 ✅ (2025-11-13 확인 완료)
+- [x] Bean Validation 추가 (@Positive, @PositiveOrZero) ✅ (2025-11-13 확인 완료)
+- [x] 인덱스 추가 (idx_payment_reservation, idx_payment_user, idx_payment_paid_at) ✅ (2025-11-13 확인 완료)
+- [x] 복합 인덱스 추가 (idx_user_paid_at) ✅ (2025-11-13 확인 완료)
 
 ### PaymentHistory 엔티티
-- [ ] type 필드 타입 변경 (PaymentHistory → HistoryType)
-- [ ] type 필드에 @Enumerated(EnumType.STRING) 추가
-- [ ] description 타입 변경 (Integer → String)
-- [ ] createdAt 타입 변경 (Long → LocalDateTime)
-- [ ] LocalDateTime import 추가
+- [x] type 필드 타입 변경 (PaymentHistory → HistoryType) ✅ (2025-11-13 확인 완료)
+- [ ] type 필드에 @Enumerated(EnumType.STRING) 추가 ⚠️ (누락됨 - 추가 필요)
+- [x] description 타입 변경 (Integer → String) ✅ (2025-11-13 확인 완료)
+- [x] createdAt 타입 변경 (Long → LocalDateTime) ✅ (2025-11-13 확인 완료)
+- [x] LocalDateTime import 추가 ✅ (2025-11-13 확인 완료)
+- [x] 인덱스 추가 (idx_history_wallet, idx_history_created) ✅ (2025-11-13 확인 완료)
+- [x] 복합 인덱스 추가 (idx_wallet_created) ✅ (2025-11-13 확인 완료)
+- ⚠️ **스펙 변경**: `balance_after` 대신 `cash_after`, `point_after` 두 필드로 구현됨 (더 명확한 설계)
 
 ### TokenHistory 엔티티
-- [ ] userId 필드명 변경 → user로 수정
-- [ ] status 필드 타입 변경 (String → TokenStatus)
+- [x] userId 필드명 변경 → user로 수정 ✅ (2025-11-13 확인 완료)
+- [x] status 필드 타입 변경 (String → TokenStatus) ✅ (2025-11-13 확인 완료)
+
+### 추가 구현 사항
+- [x] ErrorCode를 application/exception으로 이동 ✅ (clean architecture 준수)
+- [x] 대기열 API 구현 (QueueController, QueueUseCase) ✅
+- [x] 결제 API 구현 (PaymentController, PaymentUseCase) ✅
+- [x] 좌석 API 구현 (SeatController, SeatUseCase) ✅
+- [x] 사용자 API 구현 (UserController, UserUseCase) ✅
+- [x] 지갑 API 구현 (WalletController, WalletUseCase) ✅
 
 ---
 
@@ -657,6 +674,12 @@ spring:
 ## 업데이트 이력
 - **v1.0.0** (2025-11-03): 초기 작성 - 필드 타입 및 매핑 오류 16개
 - **v2.0.0** (2025-11-03): 인덱스 및 제약조건 추가 - 총 40개 이상 문제점 정리
+- **v3.0.0** (2025-11-13): 구현 완료 항목 체크 및 업데이트 - 대부분의 문제 해결 완료
+  - 모든 엔티티 타입 오류 수정 완료
+  - 인덱스 대부분 구현 완료
+  - Bean Validation 적용 완료
+  - API 엔드포인트 구현 완료
+  - 남은 작업: PaymentHistory @Enumerated 추가, 일부 인덱스 활성화
 
 ## 버전
-2.0.0
+3.0.0

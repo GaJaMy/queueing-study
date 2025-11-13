@@ -252,7 +252,8 @@
 | wallet_id | BIGINT | FK, NOT NULL | - | 지갑 ID (wallets.wallet_id) |
 | type | VARCHAR(20) | NOT NULL | - | 거래 유형 |
 | amount | INT | NOT NULL | - | 변동 금액 (양수/음수) |
-| balance_after | INT | NOT NULL | - | 거래 후 잔액 |
+| cash_after | INT | NOT NULL | - | 거래 후 현금 잔액 |
+| point_after | INT | NOT NULL | - | 거래 후 포인트 잔액 |
 | description | VARCHAR(255) | NULL | - | 거래 설명 |
 | created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 거래 시간 |
 
@@ -263,12 +264,17 @@
 - PRIMARY KEY: `history_id`
 - INDEX: `idx_history_wallet` ON `wallet_id`
 - INDEX: `idx_history_created` ON `created_at`
-- INDEX: `idx_history_type` ON `type`
+- INDEX: `idx_history_type` ON `type` *(현재 구현에는 누락)*
+- INDEX: `idx_wallet_created` ON `wallet_id, created_at` *(복합 인덱스)*
 
 **제약조건:**
 - `wallet_id`는 `wallets.wallet_id` 외래 키
 - `amount`는 0이 아님
 - 거래 내역은 삭제 불가 (Soft Delete 또는 불변)
+
+**구현 참고:**
+- 원래 스펙에서는 `balance_after` 하나의 필드였으나, 실제 구현에서는 `cash_after`와 `point_after`로 분리하여 더 명확하게 관리
+- 이는 현금과 포인트를 별도로 추적할 수 있어 더 나은 설계임
 
 ---
 
@@ -558,9 +564,29 @@ TTL: 1800
 
 ---
 
-## 7. 데이터 흐름 예시
+## 7. 구현 상태 (2025-11-13 업데이트)
 
-### 7.1 사용자 등록 및 충전
+### 완료된 항목
+- ✅ 모든 엔티티 정의 완료 (User, Wallet, Seat, Reservation, Payment, PaymentHistory, TokenHistory)
+- ✅ 외래 키 관계 설정 완료
+- ✅ 인덱스 대부분 구현 완료
+- ✅ Bean Validation 적용 (@Positive, @PositiveOrZero)
+- ✅ JPA Auditing 설정 (@CreatedDate, @LastModifiedDate)
+
+### 남은 작업
+- ⚠️ PaymentHistory의 type 필드에 @Enumerated(EnumType.STRING) 추가 필요
+- ⚠️ Reservation의 idx_user_status 복합 인덱스 활성화 필요 (현재 주석 처리됨)
+- ⚠️ PaymentHistory의 idx_history_type 인덱스 추가 필요
+- ⚠️ Redis 데이터 구조 구현 및 연동
+
+### 스펙과의 차이점
+- **PaymentHistory**: `balance_after` → `cash_after`, `point_after`로 분리 구현 (더 명확한 설계)
+
+---
+
+## 8. 데이터 흐름 예시
+
+### 8.1 사용자 등록 및 충전
 ```
 1. INSERT INTO users (user_id, name, email)
 2. INSERT INTO wallets (user_id, cash=0, point=0)
@@ -568,7 +594,7 @@ TTL: 1800
 4. INSERT INTO payment_histories (wallet_id, type='CHARGE', amount=100000, ...)
 ```
 
-### 7.2 대기열 토큰 발급
+### 8.2 대기열 토큰 발급
 ```
 1. Redis: HSET queue:token:{token} userId {userId} status WAITING createdAt {timestamp}
 2. Redis: SET queue:user:{userId} {token}
@@ -578,7 +604,7 @@ TTL: 1800
 
 **참고**: 동일 사용자가 재발급 요청 시 기존 토큰 무효화 후 새 토큰 발급
 
-### 7.3 대기열 입장 (WAITING → ACTIVE)
+### 8.3 대기열 입장 (WAITING → ACTIVE)
 ```
 1. Redis: ZRANGE queue:waiting 0 9 (상위 10명 조회)
 2. Redis: ZREM queue:waiting tokens (대기열에서 제거)
@@ -588,7 +614,7 @@ TTL: 1800
 6. RDB: UPDATE token_histories SET status='ACTIVE', activated_at=NOW() WHERE token=?
 ```
 
-### 7.4 좌석 임시 예약
+### 8.4 좌석 임시 예약
 ```
 1. BEGIN TRANSACTION
 2. SELECT * FROM seats WHERE seat_id=? FOR UPDATE (비관적 락)
@@ -598,7 +624,7 @@ TTL: 1800
 6. COMMIT
 ```
 
-### 7.5 결제 및 예약 확정
+### 8.5 결제 및 예약 확정
 ```
 1. BEGIN TRANSACTION
 2. SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE
@@ -622,9 +648,9 @@ TTL: 1800
 
 ---
 
-## 8. 스케줄러 작업
+## 9. 스케줄러 작업
 
-### 8.1 임시 예약 만료 처리
+### 9.1 임시 예약 만료 처리
 ```sql
 -- 5분 경과된 TEMP_RESERVED 예약 조회
 SELECT reservation_id, seat_id
@@ -643,7 +669,7 @@ SET status = 'AVAILABLE', updated_at = NOW()
 WHERE seat_id IN (...);
 ```
 
-### 8.2 대기열 입장 처리 (10초마다)
+### 9.2 대기열 입장 처리 (10초마다)
 ```
 1. Redis: SMEMBERS queue:active (활성 토큰 Set 조회)
 2. FOR EACH token IN active_tokens:
@@ -664,7 +690,7 @@ WHERE seat_id IN (...);
 - 먼저 TTL 만료된 토큰을 Set에서 정리 (동기화)
 - 정리 후 실제 활성 사용자 수로 입장 여부 판단
 
-### 8.3 만료된 ACTIVE 토큰 정리
+### 9.3 만료된 ACTIVE 토큰 정리
 ```
 -- TTL로 Hash는 자동 삭제됨
 -- queue:active Set 정리는 8.2 스케줄러에서 처리 (10초마다)
@@ -685,28 +711,28 @@ WHERE seat_id IN (...);
 
 ---
 
-## 9. 성능 최적화 고려사항
+## 10. 성능 최적화 고려사항
 
-### 9.1 인덱스 최적화
+### 10.1 인덱스 최적화
 - 자주 조회되는 컬럼에 인덱스 생성
 - 복합 인덱스를 활용한 커버링 인덱스 전략
 - 불필요한 인덱스 제거 (INSERT 성능 영향)
 
-### 9.2 파티셔닝
+### 10.2 파티셔닝
 - `payment_histories`: 날짜 기반 파티셔닝 (월별)
 - `token_histories`: 날짜 기반 파티셔닝 (월별)
 
-### 9.3 캐싱 전략
+### 10.3 캐싱 전략
 - Redis: 대기열 정보, 활성 토큰 (휘발성)
 - 좌석 상태는 RDB 우선 (데이터 정합성)
 
-### 9.4 동시성 제어
+### 10.4 동시성 제어
 - 좌석 예약: 비관적 락 (SELECT FOR UPDATE)
 - 잔액 차감: 비관적 락 (트랜잭션 격리 레벨 READ COMMITTED 이상)
 
 ---
 
-## 10. 데이터 보존 정책
+## 11. 데이터 보존 정책
 
 | 데이터 | 보존 기간 | 정책 |
 |--------|----------|------|
@@ -721,9 +747,9 @@ WHERE seat_id IN (...);
 
 ---
 
-## 11. 마이그레이션 전략
+## 12. 마이그레이션 전략
 
-### 11.1 초기 데이터
+### 12.1 초기 데이터
 ```sql
 -- 좌석 초기 데이터 (50개 좌석 예시)
 INSERT INTO seats (seat_id, seat_number, price, status) VALUES
@@ -733,7 +759,7 @@ INSERT INTO seats (seat_id, seat_number, price, status) VALUES
 ('A-050', 'A-50', 50000, 'AVAILABLE');
 ```
 
-### 11.2 DDL 실행 순서
+### 12.2 DDL 실행 순서
 1. users
 2. wallets (users FK)
 3. seats

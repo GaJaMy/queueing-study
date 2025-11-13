@@ -31,6 +31,7 @@ public class PaymentHistory {
     @JoinColumn(name = "wallet_id")
     private Wallet wallet;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false)
     private HistoryType type;
 

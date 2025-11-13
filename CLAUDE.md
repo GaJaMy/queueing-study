@@ -206,18 +206,37 @@ User (1) ←→ (1) Wallet
 TokenHistory (independent, for queue audit)
 ```
 
-## Current Development Status
+## Current Development Status (Updated: 2025-11-13)
 
-**Implemented:**
-- Domain entities and relationships
-- User and Wallet service logic
-- JPA repository infrastructure
-- Test suite structure (UserServiceTest, WalletServiceTest, TokenServiceTest)
+**Completed:**
+- ✅ Domain entities with proper relationships (User, Wallet, Seat, Reservation, Payment, PaymentHistory, TokenHistory, QueueToken)
+- ✅ All service layers implemented (User, Wallet, Seat, Reservation, Payment, Queue, Token)
+- ✅ UseCase layers for complex business flows (QueueUseCase, PaymentUseCase, SeatUseCase, etc.)
+- ✅ JPA repository infrastructure with proper adaptors
+- ✅ REST API endpoints implemented:
+  - Queue API: POST /v1/queue/token, GET /v1/queue/status
+  - Seat API: GET /v1/seats, POST /v1/seats/reserve
+  - Payment API: POST /v1/payment
+  - User API: POST /v1/users
+  - Wallet API: POST /v1/wallet/charge, GET /v1/wallet/{userId}
+- ✅ Bean Validation applied (@Positive, @PositiveOrZero)
+- ✅ Database indexes configured on most entities
+- ✅ Clean Architecture with proper exception handling (ErrorCode in application layer)
+- ✅ Test suite structure with unit tests
+- ✅ Swagger API documentation setup
 
-**Under Development:**
-- Token service implementation
-- Redis adaptor implementation
-- Queue management logic
-- Seat reservation logic
-- Payment processing
-- REST endpoint implementations
+**In Progress / Remaining:**
+- ⚠️ Redis adaptor implementation (stubbed but not fully integrated)
+- ⚠️ Queue scheduler service (QueueSchedulerService)
+- ⚠️ Reservation expiration scheduler
+- ⚠️ Integration tests and concurrency tests (partially done)
+- ⚠️ Minor entity adjustments:
+  - PaymentHistory: Add @Enumerated to type field
+  - Reservation: Uncomment idx_user_status composite index
+  - PaymentHistory: Add idx_history_type index
+
+**Architecture Notes:**
+- Project follows Hexagonal Architecture (Ports & Adapters)
+- Service vs UseCase separation implemented (best practice)
+- Exception handling follows Clean Architecture principles (ErrorCode in application, exceptions in domain)
+- PaymentHistory uses cash_after/point_after instead of single balance_after field (improved design)

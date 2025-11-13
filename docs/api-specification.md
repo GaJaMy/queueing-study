@@ -1,5 +1,7 @@
 # RESTful API 명세서
 
+> **업데이트**: 2025-11-13 - 실제 구현 기준으로 API 스펙 업데이트
+
 ## 목차
 1. [대기열 API](#1-대기열-api)
 2. [좌석 API](#2-좌석-api)
@@ -42,8 +44,7 @@ Content-Type: application/json
   "msg": "토큰이 발급되었습니다.",
   "data": {
     "token": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "WAITING",
-    "expiresAt": null
+    "status": "WAITING"
   }
 }
 ```
@@ -52,7 +53,8 @@ Content-Type: application/json
 |------|------|------|
 | token | string | UUID 기반 고유 토큰 |
 | status | string | 토큰 상태 (WAITING 또는 ACTIVE) |
-| expiresAt | string (ISO 8601) | 만료 시간 (ACTIVE인 경우만, WAITING은 null) |
+
+**⚠️ 구현 참고**: 현재 응답에는 expiresAt 필드가 포함되지 않음. 대기 순번과 예상 대기 시간도 별도 조회 필요.
 
 **Error Responses:**
 - `404 Not Found` - 존재하지 않는 사용자
@@ -81,7 +83,7 @@ Content-Type: application/json
 X-Queue-Token: {token}
 ```
 
-**Response (200 OK) - WAITING 상태:**
+**Response (200 OK):**
 ```json
 {
   "errorCode": "SU000",
@@ -91,36 +93,20 @@ X-Queue-Token: {token}
     "status": "WAITING",
     "queuePosition": 15,
     "remainingWaitCount": 14,
-    "estimatedWaitTime": 150,
-    "expiresAt": null
-  }
-}
-```
-
-**Response (200 OK) - ACTIVE 상태:**
-```json
-{
-  "errorCode": "SU000",
-  "msg": "ok",
-  "data": {
-    "token": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "ACTIVE",
-    "queuePosition": 0,
-    "remainingWaitCount": 0,
-    "remainingTime": 1650,
-    "expiresAt": "2025-11-03T13:30:00Z"
+    "estimatedWaitTime": 150
   }
 }
 ```
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| status | string | WAITING (대기 중) / ACTIVE (입장 완료) |
+| token | string | 토큰 값 |
+| status | enum | WAITING (대기 중) / ACTIVE (입장 완료) |
 | queuePosition | integer | 현재 대기 순번 (ACTIVE는 0) |
 | remainingWaitCount | integer | 앞에 남은 대기 인원 |
-| estimatedWaitTime | integer | 예상 대기 시간(초) - WAITING만 |
-| remainingTime | integer | 남은 유효 시간(초) - ACTIVE만 |
-| expiresAt | string | 만료 시간 (ACTIVE만, WAITING은 null) |
+| estimatedWaitTime | integer | 예상 대기 시간(초) |
+
+**⚠️ 구현 참고**: 현재 응답에는 remainingTime, expiresAt 필드가 없음. ACTIVE 상태에서 남은 시간 확인이 필요한 경우 추가 필요.
 
 **Error Responses:**
 - `401 Unauthorized` - 만료된 토큰
@@ -226,9 +212,11 @@ X-Queue-Token: {token}
 
 ### 2.2 좌석 임시 예약
 
-**Endpoint:** `POST /v1/seats/reserve`
+**Endpoint:** `POST /v1/seats/temp-reserve`
 
 **Description:** 좌석을 임시로 예약합니다. (5분간 점유)
+
+**⚠️ 구현 상태**: 엔드포인트는 존재하나 현재 비어있음 (구현 필요)
 
 **Request Headers:**
 ```
@@ -321,6 +309,8 @@ Content-Type: application/json
 
 **Description:** 임시 예약된 좌석에 대해 결제를 처리하고 예약을 확정합니다.
 
+**⚠️ 주의**: PaymentController의 HTTP 메서드가 현재 GET으로 구현되어 있으나, RESTful 원칙상 POST여야 합니다.
+
 **Request Headers:**
 ```
 X-Queue-Token: {token}
@@ -342,7 +332,7 @@ Content-Type: application/json
 | reservationId | string | O | 예약 ID |
 | usePoint | boolean | O | 포인트 사용 여부 (true/false) |
 
-**Response (200 OK) - 포인트 사용:**
+**Response (200 OK):**
 ```json
 {
   "errorCode": "SU000",
@@ -353,7 +343,7 @@ Content-Type: application/json
     "seatId": "A-001",
     "seatNumber": "A-1",
     "status": "CONFIRMED",
-    "totalAmount": 50000,
+    "amount": 50000,
     "payment": {
       "pointUsed": 10000,
       "cashUsed": 40000,
@@ -363,33 +353,7 @@ Content-Type: application/json
       "remainingCash": 60000,
       "remainingPoint": 2000
     },
-    "paidAt": "2025-11-03T13:03:00Z"
-  }
-}
-```
-
-**Response (200 OK) - 포인트 미사용:**
-```json
-{
-  "errorCode": "SU000",
-  "msg": "결제가 완료되었습니다.",
-  "data": {
-    "paymentId": "pay-67891",
-    "reservationId": "res-12346",
-    "seatId": "A-002",
-    "seatNumber": "A-2",
-    "status": "CONFIRMED",
-    "totalAmount": 50000,
-    "payment": {
-      "pointUsed": 0,
-      "cashUsed": 50000,
-      "pointEarned": 2500
-    },
-    "balance": {
-      "remainingCash": 50000,
-      "remainingPoint": 12500
-    },
-    "paidAt": "2025-11-03T13:03:00Z"
+    "paidAt": "2025-11-03T13:03:00"
   }
 }
 ```
@@ -397,13 +361,18 @@ Content-Type: application/json
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | paymentId | string | 결제 ID |
-| status | string | 좌석 상태 (CONFIRMED) |
-| totalAmount | integer | 총 결제 금액 |
-| pointUsed | integer | 사용한 포인트 |
-| cashUsed | integer | 사용한 현금 |
-| pointEarned | integer | 적립된 포인트 (현금 사용액의 5%) |
-| remainingCash | integer | 남은 현금 잔액 |
-| remainingPoint | integer | 남은 포인트 잔액 |
+| reservationId | string | 예약 ID |
+| seatId | string | 좌석 ID |
+| seatNumber | string | 좌석 번호 |
+| status | enum | 좌석 상태 (CONFIRMED) |
+| amount | integer | 총 결제 금액 |
+| payment | object | 결제 상세 정보 |
+| payment.pointUsed | integer | 사용한 포인트 |
+| payment.cashUsed | integer | 사용한 현금 |
+| payment.pointEarned | integer | 적립된 포인트 (현금 사용액의 5%) |
+| balance | object | 잔액 정보 |
+| balance.remainingCash | integer | 남은 현금 잔액 |
+| balance.remainingPoint | integer | 남은 포인트 잔액 |
 | paidAt | string | 결제 완료 시간 |
 
 **Error Responses:**
@@ -773,3 +742,9 @@ X-Queue-Token: {token}
 | 버전 | 날짜 | 변경 내용 |
 |------|------|---------|
 | 1.0.0 | 2025-11-03 | 초기 API 명세서 작성 |
+| 1.1.0 | 2025-11-13 | 실제 구현 기준으로 API 스펙 업데이트 |
+|  |  | - IssueQueueResponseDto: expiresAt 필드 제거 |
+|  |  | - GetQueuePositionResponseDto: remainingTime, expiresAt 필드 제거 |
+|  |  | - PayResponseDto: 중첩 구조(payment, balance) 반영 |
+|  |  | - 좌석 임시 예약 엔드포인트: /seats/reserve → /seats/temp-reserve |
+|  |  | - 구현 상태 표시 추가 (완료/미완성) |
